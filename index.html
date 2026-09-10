@@ -292,6 +292,13 @@ function injectNamedFontFace(family, file){
   if(!styleTag){ styleTag = document.createElement('style'); styleTag.id = styleId; document.head.appendChild(styleTag); }
   styleTag.textContent = fontFaceRule(family, file);
 }
+async function loadUploadedFont(family, file){
+  injectNamedFontFace(family, file);
+  const font = new FontFace(family, `url(data:${fontMime(file.ext)};base64,${file.base64})`);
+  const loaded = await font.load();
+  document.fonts.add(loaded);
+  return loaded;
+}
 function englishFontList(){
   const extra = settings.englishFontFile?.family;
   return extra && !ENGLISH_FONTS.includes(extra) ? [extra, ...ENGLISH_FONTS] : ENGLISH_FONTS;
@@ -376,26 +383,28 @@ function fileToBase64(file){
 }
 document.getElementById('englishFontFile').addEventListener('change', async ev => {
   const f = ev.target.files[0]; if(!f) return;
-  settings.englishFontFile = { family: familyFromFileName(f.name), name: f.name, ext: f.name.split('.').pop().toLowerCase(), base64: await fileToBase64(f) };
-  injectNamedFontFace(settings.englishFontFile.family, settings.englishFontFile);
-  fillFontSelects();
-  renderOverrideList();
-  render();
+  try{
+    settings.englishFontFile = { family: familyFromFileName(f.name), name: f.name, ext: f.name.split('.').pop().toLowerCase(), base64: await fileToBase64(f) };
+    await loadUploadedFont(settings.englishFontFile.family, settings.englishFontFile);
+    fillFontSelects();
+    renderOverrideList();
+    render();
+  }catch(error){ console.error('Could not load English font:', error); setLoadStatus(`Could not load ${f.name}: ${error.message}`, true); }
 });
 document.getElementById('hindiFontFile').addEventListener('change', async ev => {
   const f = ev.target.files[0]; if(!f) return;
-  settings.hindiFontFile = { family: familyFromFileName(f.name), name: f.name, ext: f.name.split('.').pop().toLowerCase(), base64: await fileToBase64(f) };
-  injectNamedFontFace(settings.hindiFontFile.family, settings.hindiFontFile);
-  try{ await document.fonts.load(`38px "${settings.hindiFontFile.family}"`); }catch(err){}
-  settings.defaultHindiFont = settings.hindiFontFile.family;
-  entries.forEach(e => {
-    if(e.language === 'hindi' && !e.customFont){
-      e.fontFamily = settings.hindiFontFile.family;
-    }
-  });
-  fillFontSelects();
-  renderOverrideList();
-  render();
+  try{
+    settings.hindiFontFile = { family: familyFromFileName(f.name), name: f.name, ext: f.name.split('.').pop().toLowerCase(), base64: await fileToBase64(f) };
+    await loadUploadedFont(settings.hindiFontFile.family, settings.hindiFontFile);
+    settings.defaultHindiFont = settings.hindiFontFile.family;
+    entries.forEach(e => {
+      if(e.language === 'hindi' && !e.customFont) e.fontFamily = settings.hindiFontFile.family;
+    });
+    fillFontSelects();
+    renderOverrideList();
+    render();
+    setLoadStatus(`${settings.hindiFontFile.family} loaded and applied to Hindi entries.`, false);
+  }catch(error){ console.error('Could not load Hindi font:', error); setLoadStatus(`Could not load ${f.name}: ${error.message}`, true); }
 });
 
 // ---------------- Supabase (collaboration) ----------------
@@ -804,8 +813,7 @@ function attachCardListeners(){
       entry.customFont = { family, name: file.name, base64, ext: file.name.split('.').pop().toLowerCase() };
       entry.fontFamily = family;
       entry.isOverridden = true;
-      injectNamedFontFace(family, entry.customFont);
-      try{ await document.fonts.load(`38px "${family}"`); }catch(err){}
+      await loadUploadedFont(family, entry.customFont);
       debouncedWrite(safeId, 'fontFamily', family, 0);
       debouncedWrite(safeId, 'isOverridden', true, 0);
       render();
