@@ -284,7 +284,7 @@ function fontFormat(ext){ return String(ext).toLowerCase() === 'otf' ? 'opentype
 function fontMime(ext){ return String(ext).toLowerCase() === 'otf' ? 'font/otf' : 'font/ttf'; }
 function sameFamily(a, b){ return String(a||'').trim().toLowerCase() === String(b||'').trim().toLowerCase(); }
 function fontFaceRule(family, file){
-  return `@font-face{font-family:'${family}';src:url(data:${fontMime(file.ext)};base64,${file.base64}) format('${fontFormat(file.ext)}');font-display:block;}`;
+  return `@font-face{font-family:'${family}';src:url(data:${fontMime(file.ext)};base64,${file.base64}) format('${fontFormat(file.ext)}');font-weight:400;font-style:normal;font-display:block;}`;
 }
 function injectNamedFontFace(family, file){
   const styleId = `face-${family.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
@@ -294,9 +294,12 @@ function injectNamedFontFace(family, file){
 }
 async function loadUploadedFont(family, file){
   injectNamedFontFace(family, file);
-  const font = new FontFace(family, `url(data:${fontMime(file.ext)};base64,${file.base64})`);
+  const binary = Uint8Array.from(atob(file.base64), char => char.charCodeAt(0));
+  const blobUrl = URL.createObjectURL(new Blob([binary], { type:fontMime(file.ext) }));
+  const font = new FontFace(family, `url(${blobUrl})`, { weight:'400', style:'normal' });
   const loaded = await font.load();
   document.fonts.add(loaded);
+  await document.fonts.load(`38px "${family}"`);
   return loaded;
 }
 function englishFontList(){
