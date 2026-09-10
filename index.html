@@ -363,14 +363,26 @@ document.getElementById('connectSupabase').addEventListener('click', () => {
 
 async function loadRemoteEntries(){
   if(!db) return;
-  const { data, error } = await db.from('entries').select('*');
-  if(error){
+  const pageSize = 500;
+  const rows = [];
+  try{
+    for(let from = 0; ; from += pageSize){
+      const { data, error } = await db.from('entries')
+        .select('*')
+        .order('safe_id', { ascending:true })
+        .range(from, from + pageSize - 1);
+      if(error) throw error;
+      rows.push(...(data || []));
+      if(!data || data.length < pageSize) break;
+    }
+  }catch(error){
     console.warn('Supabase load error', error);
     setSyncStatus(false, 'database error');
     document.getElementById('supabaseStatus').textContent = `Database error: ${error.message}`;
     return;
   }
-  mergeRemoteEntries(data);
+  mergeRemoteEntries(rows);
+  document.getElementById('supabaseStatus').textContent = `Loaded ${rows.length} shared entries.`;
 }
 
 function mergeRemoteEntries(rows){
@@ -384,6 +396,7 @@ function mergeRemoteEntries(rows){
   Object.keys(remote).forEach(id => {
     if(!entries.find(e => e.safeId === id)) entries.push({ safeId:id, customFont:null, ...fromRemoteRow(remote[id]) });
   });
+  entries.sort((a, b) => String(a.safeId).localeCompare(String(b.safeId), 'en'));
   cacheEntries();
   render();
 }
