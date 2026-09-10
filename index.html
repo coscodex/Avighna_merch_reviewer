@@ -9,8 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Montserrat:wght@400;700&family=Playfair+Display:wght@600&family=Bebas+Neue&family=Pacifico&family=Oswald:wght@500&family=Anton&family=Dancing+Script:wght@600&family=Noto+Sans+Devanagari:wght@400;600&family=Hind:wght@500&family=Baloo+2:wght@600&family=Yatra+One&family=Tiro+Devanagari+Hindi&family=Rozha+One&family=Khand:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     --paper:#F0F1EC; --surface:#FFFFFF; --ink:#17181A; --ink-soft:#5B5D5F;
@@ -132,16 +131,14 @@
 <div class="settings" id="settingsPanel">
   <div>
     <h3>Collaboration (optional)</h3>
-    <p class="hint">Connect a free Firebase project so everyone who opens this link sees the same live board — edits and "reviewed" checkmarks sync across everyone instantly. See README for the 5-minute setup. Paste the config object Firebase gives you below.</p>
+    <p class="hint">Connect Supabase so everyone who opens this link sees the same live board — edits and "reviewed" checkmarks sync across everyone instantly. Create the entries table using the SQL shown in the setup instructions.</p>
     <div class="settings-row field-full">
-      <div class="field field-full">
-        <label>Firebase config (paste the whole object from your Firebase console)</label>
-        <textarea id="firebaseConfigInput" placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "...", "storageBucket": "...", "messagingSenderId": "...", "appId": "..." }'></textarea>
-      </div>
+      <div class="field"><label>Supabase project URL</label><input type="text" id="supabaseUrlInput" placeholder="https://your-project.supabase.co"></div>
+      <div class="field"><label>Supabase anon key</label><input type="text" id="supabaseAnonKeyInput" placeholder="eyJhbGciOiJIUzI1NiIs..."></div>
     </div>
     <div class="settings-row">
-      <button class="small" id="connectFirebase">Connect</button>
-      <span class="hint" id="firebaseStatus"></span>
+      <button class="small" id="connectSupabase">Connect</button>
+      <span class="hint" id="supabaseStatus"></span>
     </div>
   </div>
 
@@ -210,8 +207,8 @@ const STORAGE_KEY = 'avighna_proof_sheet_settings_v2';
 
 let entries = [];          // local mirror, keyed by array index; each has .safeId
 let settings = loadSettings();
-let db = null;             // firestore instance, null = not connected
-let unsubscribe = null;    // firestore listener unsubscribe fn
+let db = null;             // Supabase client, null = not connected
+let unsubscribe = null;    // Supabase realtime channel cleanup fn
 let writeTimers = {};      // debounce handles per safeId+field
 
 function defaultSettings(){
@@ -222,7 +219,8 @@ function defaultSettings(){
     englishFontFile: null,
     hindiFontFile: null,
     overrides: [],
-    firebaseConfig: null   // raw text as pasted
+    supabaseUrl: '',
+    supabaseAnonKey: ''
   };
 }
 function loadSettings(){
@@ -254,9 +252,10 @@ function initSettingsUI(){
   hinSel.value = settings.defaultHindiFont;
   renderOverrideList();
 
-  if(settings.firebaseConfig){
-    document.getElementById('firebaseConfigInput').value = settings.firebaseConfig;
-    tryConnectFirebase(settings.firebaseConfig, true);
+  if(settings.supabaseUrl && settings.supabaseAnonKey){
+    document.getElementById('supabaseUrlInput').value = settings.supabaseUrl;
+    document.getElementById('supabaseAnonKeyInput').value = settings.supabaseAnonKey;
+    tryConnectSupabase(settings.supabaseUrl, settings.supabaseAnonKey, true);
   }
 }
 
@@ -285,30 +284,26 @@ function fileToBase64(file){
 document.getElementById('englishFontFile').addEventListener('change', async ev => { const f=ev.target.files[0]; if(!f) return; settings.englishFontFile = { ext: f.name.split('.').pop().toLowerCase(), base64: await fileToBase64(f) }; });
 document.getElementById('hindiFontFile').addEventListener('change', async ev => { const f=ev.target.files[0]; if(!f) return; settings.hindiFontFile = { ext: f.name.split('.').pop().toLowerCase(), base64: await fileToBase64(f) }; });
 
-// ---------------- Firebase (collaboration) ----------------
+// ---------------- Supabase (collaboration) ----------------
 function setSyncStatus(connected, label){
   const tag = document.getElementById('syncTag');
   tag.classList.toggle('live', connected);
   document.getElementById('syncLabel').textContent = label;
 }
 
-function tryConnectFirebase(configText, silent){
-  const statusEl = document.getElementById('firebaseStatus');
-  let config;
-  try{
-    config = JSON.parse(configText);
-  }catch(e){
-    try{ config = Function('"use strict"; return (' + configText + ')')(); }
-    catch(e2){ if(!silent) statusEl.textContent = 'Could not parse that config — paste the exact object from Firebase.'; return; }
+function tryConnectSupabase(url, anonKey, silent){
+  const statusEl = document.getElementById('supabaseStatus');
+  if(!url || !anonKey){
+    if(!silent) statusEl.textContent = 'Enter both the Supabase project URL and anon key.';
+    return;
   }
   try{
-    if(firebase.apps.length) firebase.app().delete().catch(()=>{});
-    const app = firebase.initializeApp(config);
-    db = firebase.firestore();
-    settings.firebaseConfig = configText;
+    db = window.supabase.createClient(url, anonKey);
+    settings.supabaseUrl = url;
+    settings.supabaseAnonKey = anonKey;
     saveSettings();
     setSyncStatus(true, 'live · syncing');
-    statusEl.textContent = 'Connected. Everyone with this same config will share this board.';
+    statusEl.textContent = 'Connected. Everyone with this same project will share this board.';
     subscribeToEntries();
   }catch(e){
     db = null;
@@ -316,31 +311,61 @@ function tryConnectFirebase(configText, silent){
     if(!silent) statusEl.textContent = 'Connection failed: ' + e.message;
   }
 }
-document.getElementById('connectFirebase').addEventListener('click', () => {
-  tryConnectFirebase(document.getElementById('firebaseConfigInput').value.trim(), false);
+document.getElementById('connectSupabase').addEventListener('click', () => {
+  tryConnectSupabase(
+    document.getElementById('supabaseUrlInput').value.trim(),
+    document.getElementById('supabaseAnonKeyInput').value.trim(),
+    false
+  );
 });
+
+async function loadRemoteEntries(){
+  if(!db) return;
+  const { data, error } = await db.from('entries').select('*');
+  if(error){ console.warn('Supabase load error', error); setSyncStatus(false, 'sync error'); return; }
+  mergeRemoteEntries(data);
+}
+
+function mergeRemoteEntries(rows){
+  const remote = {};
+  rows.forEach(row => { remote[row.safe_id] = row; });
+  entries = entries.map(e => {
+    const r = remote[e.safeId];
+    if(!r) return e;
+    return { ...e, ...fromRemoteRow(r), safeId: e.safeId };
+  });
+  Object.keys(remote).forEach(id => {
+    if(!entries.find(e => e.safeId === id)) entries.push({ safeId:id, customFont:null, ...fromRemoteRow(remote[id]) });
+  });
+  render();
+}
+
+function fromRemoteRow(row){
+  return {
+    orderId: row.order_id, timestamp: row.timestamp, orderer: row.orderer,
+    originalPrintName: row.original_print_name, printName: row.print_name,
+    language: row.language, refLink: row.ref_link, fontFamily: row.font_family,
+    isOverridden: row.is_overridden, reviewed: row.reviewed
+  };
+}
 
 function subscribeToEntries(){
   if(!db) return;
   if(unsubscribe) unsubscribe();
-  unsubscribe = db.collection('entries').onSnapshot(snapshot => {
-    const remote = {};
-    snapshot.forEach(doc => { remote[doc.id] = doc.data(); });
-    // merge remote docs into local entries (remote is source of truth for synced fields)
-    entries = entries.map(e => {
-      const r = remote[e.safeId];
-      if(!r) return e;
-      return { ...e, ...r, safeId: e.safeId };
+  loadRemoteEntries();
+  const channel = db.channel('entries-live')
+    .on('postgres_changes', { event:'*', schema:'public', table:'entries' }, payload => {
+      if(payload.eventType === 'DELETE'){
+        entries = entries.filter(e => e.safeId !== payload.old.safe_id);
+      }else{
+        mergeRemoteEntries([payload.new]);
+      }
+    })
+    .subscribe(status => {
+      if(status === 'SUBSCRIBED') setSyncStatus(true, 'live · syncing');
+      if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setSyncStatus(false, 'sync error');
     });
-    // add any remote-only docs not yet in local (e.g. teammate loaded a row we haven't)
-    Object.keys(remote).forEach(id => {
-      if(!entries.find(e => e.safeId === id)) entries.push({ safeId:id, customFont:null, ...remote[id] });
-    });
-    render();
-  }, err => {
-    console.warn('Firestore snapshot error', err);
-    setSyncStatus(false, 'sync error');
-  });
+  unsubscribe = () => db.removeChannel(channel);
 }
 
 function debouncedWrite(safeId, field, value, delay){
@@ -348,7 +373,9 @@ function debouncedWrite(safeId, field, value, delay){
   const key = safeId + ':' + field;
   clearTimeout(writeTimers[key]);
   writeTimers[key] = setTimeout(() => {
-    db.collection('entries').doc(safeId).set({ [field]: value }, { merge:true }).catch(err => console.warn('write failed', err));
+    const fieldMap = { printName:'print_name', fontFamily:'font_family', isOverridden:'is_overridden', reviewed:'reviewed' };
+    db.from('entries').update({ [fieldMap[field]]: value }).eq('safe_id', safeId)
+      .then(({ error }) => { if(error) console.warn('Supabase write failed', error); });
   }, delay ?? 400);
 }
 
@@ -424,21 +451,26 @@ async function buildEntries(rows){
   }));
 
   if(db){
-    // seed / refresh Firestore, preserving teammate edits to printName/fontFamily/reviewed
+    // Seed / refresh Supabase, preserving teammate edits to printName/fontFamily/reviewed.
     for(const e of parsed){
-      const ref = db.collection('entries').doc(e.safeId);
-      const snap = await ref.get();
-      if(snap.exists){
-        await ref.set({
-          orderId:e.orderId, timestamp:e.timestamp, orderer:e.orderer,
-          originalPrintName:e.originalPrintName, language:e.language, refLink:e.refLink
-        }, { merge:true });
+      const { data: existing, error: selectError } = await db.from('entries').select('safe_id').eq('safe_id', e.safeId).maybeSingle();
+      if(selectError){ console.warn('Supabase seed lookup failed:', selectError); continue; }
+      const rawFields = {
+        safe_id:e.safeId, order_id:e.orderId, timestamp:e.timestamp, orderer:e.orderer,
+        original_print_name:e.originalPrintName, language:e.language, ref_link:e.refLink
+      };
+      if(existing){
+        const { error } = await db.from('entries').update(rawFields).eq('safe_id', e.safeId);
+        if(error) console.warn('Supabase refresh failed:', error);
       } else {
-        const { customFont, ...seed } = e;
-        await ref.set(seed);
+        const { error } = await db.from('entries').insert({
+          ...rawFields, print_name:e.printName, font_family:e.fontFamily,
+          is_overridden:e.isOverridden, reviewed:e.reviewed
+        });
+        if(error) console.warn('Supabase seed failed:', error);
       }
     }
-    // entries[] will populate from the live snapshot listener
+    await loadRemoteEntries();
   } else {
     entries = parsed;
     render();
