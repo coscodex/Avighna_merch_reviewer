@@ -93,6 +93,7 @@
   .meta-left .oid{ color:var(--ink); font-weight:500; }
   .chip-row{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
   .lang-chip{ font-family:'IBM Plex Mono', monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.04em; padding:3px 8px; border:1px solid var(--line); color:var(--ink-soft); white-space:nowrap; }
+  .garment-chip{ font-family:'IBM Plex Mono', monospace; font-size:10px; padding:3px 8px; border:1px solid var(--line); color:var(--ink-soft); background:#F5F5F2; margin-bottom:8px; }
   .lang-chip.hindi{ color:var(--accent); border-color:var(--accent-soft); background:var(--accent-soft); }
   .lang-chip.override{ color:var(--warn); border-color:#EFE0C4; background:#FBF3E3; }
 
@@ -503,6 +504,10 @@ function isDarkGarment(entry){
   return sourceColumnValue(entry.sourceRow, 'Select type of Tshirt').toLowerCase().includes('black');
 }
 
+function garmentLabel(entry){
+  return sourceColumnValue(entry.sourceRow, 'Select type of Tshirt') || 'T-shirt type not recorded';
+}
+
 async function transliterate(englishName){
   const url = new URL('https://inputtools.google.com/request');
   url.searchParams.set('text', englishName);
@@ -638,6 +643,7 @@ function render(){
           <div class="lang-chip ${e.language==='hindi'?'hindi':''}">${e.language}</div>
         </div>
       </div>
+      <div class="garment-chip">${escapeHtml(garmentLabel(e))}</div>
       ${e.orderer && e.orderer !== e.originalPrintName ? `<div class="ordered-by">Ordered by ${escapeHtml(e.orderer)}</div>` : ''}
       ${showOriginal ? `<div class="original-name">As entered: ${escapeHtml(e.originalPrintName)}</div>` : ''}
 
