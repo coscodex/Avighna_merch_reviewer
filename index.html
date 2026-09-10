@@ -31,6 +31,8 @@
 
   .loadbar{ display:flex; gap:10px; flex-wrap:wrap; padding:18px 32px; background:var(--surface); border-bottom:1px solid var(--line); align-items:center; }
   .loadbar label{ font-size:12px; color:var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
+  .load-status{ font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--ink-soft); }
+  .load-status.error{ color:var(--warn); }
   input[type=text], select, textarea{ font-family:'Space Grotesk', sans-serif; font-size:13px; padding:8px 10px; border:1px solid var(--line); background:#fff; color:var(--ink); }
   input[type=text]{ min-width:260px; }
   textarea{ width:100%; min-height:90px; font-family:'IBM Plex Mono', monospace; font-size:12px; }
@@ -125,6 +127,7 @@
   <span class="mono" style="font-size:12px;color:var(--ink-soft);">or</span>
   <input type="text" id="csvUrl" placeholder="Paste published Google Sheet CSV link…">
   <button class="ghost" id="loadUrlBtn">Fetch link</button>
+  <span class="load-status" id="loadStatus"></span>
   <button class="ghost" id="settingsBtn" style="margin-left:auto;">Settings</button>
 </div>
 
@@ -711,10 +714,40 @@ text{ font-family:'${familyForSvg}', sans-serif; font-size:${fontSize}px; fill:#
 }
 
 // --- data loading triggers ---
-document.getElementById('csvFile').addEventListener('change', ev => {
-  const file = ev.target.files[0];
+function setLoadStatus(message, isError){
+  const status = document.getElementById('loadStatus');
+  status.textContent = message;
+  status.classList.toggle('error', !!isError);
+}
+
+function loadCsvFile(file){
   if(!file) return;
-  Papa.parse(file, { header:true, skipEmptyLines:true, complete: res => buildEntries(res.data) });
+  setLoadStatus(`Reading ${file.name}…`, false);
+  Papa.parse(file, {
+    header:true,
+    skipEmptyLines:true,
+    complete: res => {
+      if(res.errors?.length){
+        const firstError = res.errors[0];
+        setLoadStatus(`CSV error on row ${firstError.row ?? '?'}: ${firstError.message}`, true);
+        return;
+      }
+      if(!res.data.length || !Object.keys(res.data[0]).length){
+        setLoadStatus('CSV has no data rows or header row.', true);
+        return;
+      }
+      setLoadStatus(`Loaded ${res.data.length} rows.`, false);
+      buildEntries(res.data).catch(error => {
+        console.error('Could not build entries:', error);
+        setLoadStatus(`Could not load rows: ${error.message}`, true);
+      });
+    },
+    error: error => setLoadStatus(`Could not read CSV: ${error.message || error}`, true)
+  });
+}
+
+document.getElementById('csvFile').addEventListener('change', ev => {
+  loadCsvFile(ev.target.files[0]);
 });
 document.getElementById('loadUrlBtn').addEventListener('click', () => {
   const url = document.getElementById('csvUrl').value.trim();
@@ -734,7 +767,7 @@ document.getElementById('applyMapping').addEventListener('click', () => {
   saveSettings();
   const url = document.getElementById('csvUrl').value.trim();
   const fileInput = document.getElementById('csvFile');
-  if(fileInput.files[0]) Papa.parse(fileInput.files[0], { header:true, skipEmptyLines:true, complete: res => buildEntries(res.data) });
+  if(fileInput.files[0]) loadCsvFile(fileInput.files[0]);
   else if(url) Papa.parse(url, { download:true, header:true, skipEmptyLines:true, complete: res => buildEntries(res.data) });
 });
 
