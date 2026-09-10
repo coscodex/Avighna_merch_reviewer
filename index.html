@@ -479,6 +479,10 @@ async function buildEntries(rows){
     };
   }));
 
+  // Always show the uploaded CSV locally, even when collaboration is unavailable.
+  entries = parsed;
+  render();
+
   if(db){
     // Seed / refresh Supabase, preserving teammate edits to printName/fontFamily/reviewed.
     for(const e of parsed){
@@ -500,9 +504,6 @@ async function buildEntries(rows){
       }
     }
     await loadRemoteEntries();
-  } else {
-    entries = parsed;
-    render();
   }
 }
 
