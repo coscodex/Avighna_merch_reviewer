@@ -75,6 +75,18 @@
   .card::after{ left:auto; right:-1px; top:auto; bottom:-1px; border:none; border-bottom:1px solid var(--ink); border-right:1px solid var(--ink); }
   .card.mine{ outline:2px solid var(--accent); outline-offset:-2px; }
   .card.reviewed{ background:#F8FBF9; }
+  .card.dark-garment{ background:#000; color:#fff; border-color:#333; }
+  .card.dark-garment.reviewed{ background:#000; }
+  .card.dark-garment .meta-left,
+  .card.dark-garment .ordered-by,
+  .card.dark-garment .original-name,
+  .card.dark-garment .status,
+  .card.dark-garment .reviewed-toggle{ color:#fff; }
+  .card.dark-garment .meta-left .oid{ color:#fff; }
+  .card.dark-garment .preview-box{ background:#080808; border-color:#777; }
+  .card.dark-garment .preview-text{ color:#fff; }
+  .card.dark-garment .preview-text::placeholder{ color:#ddd; }
+  .card.dark-garment .ref-block{ background:#080808; border-color:#444; }
 
   .card-meta{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; gap:8px; }
   .meta-left{ font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--ink-soft); line-height:1.5; }
@@ -212,7 +224,7 @@ const ALL_FONTS = [...ENGLISH_FONTS, ...HINDI_FONTS];
 const STORAGE_KEY = 'avighna_proof_sheet_settings_v2';
 const ENTRIES_CACHE_KEY = 'avighna_proof_sheet_entries_v1';
 // Fill these once before deploying. The anon key is safe to expose in a browser app.
-const SHARED_SUPABASE_CONFIG = { url:'https://zxhyuwkenuqhirpxmcza.supabase.co', anonKey:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4aHl1d2tlbnVxaGlycHhtY3phIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMzIwNjIsImV4cCI6MjEwNDYwODA2Mn0.m7z_TRzc9upz8nRG6UKNCbtyMGIgnKkPlRmgVjlfnC0' };
+const SHARED_SUPABASE_CONFIG = { url:'https://zxhyuwkenuqhirpxmcza.supabahttps://coscodex.github.io/Avighna_merch_reviewer/?v=bd1b3c7se.co', anonKey:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4aHl1d2tlbnVxaGlycHhtY3phIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMzIwNjIsImV4cCI6MjEwNDYwODA2Mn0.m7z_TRzc9upz8nRG6UKNCbtyMGIgnKkPlRmgVjlfnC0' };
 
 let entries = [];          // local mirror, keyed by array index; each has .safeId
 let settings = loadSettings();
@@ -615,7 +627,7 @@ function render(){
     const showOriginal = e.printName !== e.originalPrintName;
 
     return `
-    <div class="card ${e.isOverridden ? 'mine' : ''} ${e.reviewed ? 'reviewed' : ''}" data-safeid="${e.safeId}">
+    <div class="card ${e.isOverridden ? 'mine' : ''} ${e.reviewed ? 'reviewed' : ''} ${isDarkGarment(e) ? 'dark-garment' : ''}" data-safeid="${e.safeId}">
       <div class="card-meta">
         <div class="meta-left">
           <div class="oid">${escapeHtml(e.orderId)}</div>
@@ -630,7 +642,7 @@ function render(){
       ${showOriginal ? `<div class="original-name">As entered: ${escapeHtml(e.originalPrintName)}</div>` : ''}
 
       <div class="preview-box">
-        <input class="preview-text" style="font-family:${activeFontCss};" data-safeid="${e.safeId}" value="${escapeHtml(e.printName)}" placeholder="${e.language === 'none' ? 'No name' : ''}">
+        <input class="preview-text" style="font-family:${activeFontCss}; color:${isDarkGarment(e) ? '#fff' : '#17181A'};" data-safeid="${e.safeId}" value="${escapeHtml(e.printName)}" placeholder="${e.language === 'none' ? 'No name' : ''}">
       </div>
 
       <div class="controls-row">
