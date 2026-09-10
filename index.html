@@ -207,12 +207,15 @@ const ENGLISH_FONTS = ['Impact','Poppins','Montserrat','Playfair Display','Bebas
 const HINDI_FONTS = ['Yatra One','Noto Sans Devanagari','Hind','Baloo 2','Tiro Devanagari Hindi','Rozha One','Khand'];
 const ALL_FONTS = [...ENGLISH_FONTS, ...HINDI_FONTS];
 const STORAGE_KEY = 'avighna_proof_sheet_settings_v2';
+// Fill these once before deploying. The anon key is safe to expose in a browser app.
+const SHARED_SUPABASE_CONFIG = { url:'', anonKey:'' };
 
 let entries = [];          // local mirror, keyed by array index; each has .safeId
 let settings = loadSettings();
 let db = null;             // Supabase client, null = not connected
 let unsubscribe = null;    // Supabase realtime channel cleanup fn
 let writeTimers = {};      // debounce handles per safeId+field
+let syncPollTimer = null;  // fallback when Supabase Realtime is unavailable
 
 function defaultSettings(){
   return {
@@ -268,10 +271,12 @@ function initSettingsUI(){
   hinSel.value = settings.defaultHindiFont;
   renderOverrideList();
 
-  if(settings.supabaseUrl && settings.supabaseAnonKey){
-    document.getElementById('supabaseUrlInput').value = settings.supabaseUrl;
-    document.getElementById('supabaseAnonKeyInput').value = settings.supabaseAnonKey;
-    tryConnectSupabase(settings.supabaseUrl, settings.supabaseAnonKey, true);
+  const sharedUrl = SHARED_SUPABASE_CONFIG.url || settings.supabaseUrl;
+  const sharedAnonKey = SHARED_SUPABASE_CONFIG.anonKey || settings.supabaseAnonKey;
+  if(sharedUrl && sharedAnonKey){
+    document.getElementById('supabaseUrlInput').value = sharedUrl;
+    document.getElementById('supabaseAnonKeyInput').value = sharedAnonKey;
+    tryConnectSupabase(sharedUrl, sharedAnonKey, true);
   }
 }
 
@@ -373,6 +378,7 @@ function fromRemoteRow(row){
 function subscribeToEntries(){
   if(!db) return;
   if(unsubscribe) unsubscribe();
+  clearInterval(syncPollTimer);
   loadRemoteEntries();
   const channel = db.channel('entries-live')
     .on('postgres_changes', { event:'*', schema:'public', table:'entries' }, payload => {
@@ -385,11 +391,12 @@ function subscribeToEntries(){
     .subscribe(status => {
       if(status === 'SUBSCRIBED') setSyncStatus(true, 'live · syncing');
       if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT'){
-        setSyncStatus(true, 'connected · realtime unavailable');
-        document.getElementById('supabaseStatus').textContent = 'Connected, but Realtime is not enabled for entries. Table reads and edits still work.';
+        setSyncStatus(true, 'connected · polling');
+        document.getElementById('supabaseStatus').textContent = 'Connected. Live updates are using polling because Realtime is unavailable.';
       }
     });
   unsubscribe = () => db.removeChannel(channel);
+  syncPollTimer = setInterval(loadRemoteEntries, 5000);
 }
 
 function debouncedWrite(safeId, field, value, delay){
