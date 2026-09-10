@@ -335,7 +335,12 @@ document.getElementById('connectSupabase').addEventListener('click', () => {
 async function loadRemoteEntries(){
   if(!db) return;
   const { data, error } = await db.from('entries').select('*');
-  if(error){ console.warn('Supabase load error', error); setSyncStatus(false, 'sync error'); return; }
+  if(error){
+    console.warn('Supabase load error', error);
+    setSyncStatus(false, 'database error');
+    document.getElementById('supabaseStatus').textContent = `Database error: ${error.message}`;
+    return;
+  }
   mergeRemoteEntries(data);
 }
 
@@ -376,7 +381,10 @@ function subscribeToEntries(){
     })
     .subscribe(status => {
       if(status === 'SUBSCRIBED') setSyncStatus(true, 'live · syncing');
-      if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setSyncStatus(false, 'sync error');
+      if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT'){
+        setSyncStatus(true, 'connected · realtime unavailable');
+        document.getElementById('supabaseStatus').textContent = 'Connected, but Realtime is not enabled for entries. Table reads and edits still work.';
+      }
     });
   unsubscribe = () => db.removeChannel(channel);
 }
@@ -388,7 +396,12 @@ function debouncedWrite(safeId, field, value, delay){
   writeTimers[key] = setTimeout(() => {
     const fieldMap = { printName:'print_name', fontFamily:'font_family', isOverridden:'is_overridden', reviewed:'reviewed' };
     db.from('entries').update({ [fieldMap[field]]: value }).eq('safe_id', safeId)
-      .then(({ error }) => { if(error) console.warn('Supabase write failed', error); });
+      .then(({ error }) => {
+        if(error){
+          console.warn('Supabase write failed', error);
+          document.getElementById('supabaseStatus').textContent = `Write error: ${error.message}`;
+        }
+      });
   }, delay ?? 400);
 }
 
