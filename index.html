@@ -482,6 +482,15 @@ function findOverride(orderId, printName){
   });
 }
 
+function sourceColumnValue(row, target){
+  const key = Object.keys(row || {}).find(name => name.trim().toLowerCase() === target.toLowerCase());
+  return key ? String(row[key] ?? '').trim() : '';
+}
+
+function isDarkGarment(entry){
+  return sourceColumnValue(entry.sourceRow, 'Select type of Tshirt').toLowerCase().includes('black');
+}
+
 async function transliterate(englishName){
   const url = new URL('https://inputtools.google.com/request');
   url.searchParams.set('text', englishName);
@@ -732,6 +741,7 @@ async function downloadEntry(safeId){
   statusEl.classList.remove('embedded','warn');
 
   const width = 1200, height = 400, fontSize = 100;
+  const textColor = isDarkGarment(e) ? '#fff' : '#000';
   let fontFaceCss = '';
   let familyForSvg = e.fontFamily;
 
@@ -758,7 +768,7 @@ async function downloadEntry(safeId){
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
 <style>${fontFaceCss}
-text{ font-family:'${familyForSvg}', sans-serif; font-size:${fontSize}px; fill:#000; }
+text{ font-family:'${familyForSvg}', sans-serif; font-size:${fontSize}px; fill:${textColor}; }
 </style>
 <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle">${escapeHtml(e.printName)}</text>
 </svg>`;
@@ -804,7 +814,8 @@ function downloadUpdatedCsv(){
 function vendorSvgMarkup(entry){
   const safeText = escapeHtml(entry.printName || '');
   const family = escapeHtml(entry.fontFamily || 'sans-serif');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400"><text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" style="font-family:'${family}';font-size:100px;fill:#000">${safeText}</text></svg>`;
+  const color = isDarkGarment(entry) ? '#fff' : '#000';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400"><text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" style="font-family:'${family}';font-size:100px;fill:${color}">${safeText}</text></svg>`;
 }
 
 function downloadVendorCsv(){
