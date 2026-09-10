@@ -429,7 +429,7 @@ function fromRemoteRow(row){
     orderId: row.order_id, timestamp: row.timestamp, orderer: row.orderer,
     originalPrintName: row.original_print_name, printName: row.print_name,
     language: row.language, refLink: row.ref_link, fontFamily: row.font_family,
-    isOverridden: row.is_overridden, reviewed: row.reviewed
+    garmentType: row.garment_type || '', isOverridden: row.is_overridden, reviewed: row.reviewed
   };
 }
 
@@ -501,12 +501,11 @@ function sourceColumnValue(row, target){
 }
 
 function isDarkGarment(entry){
-  return sourceColumnValue(entry.sourceRow, 'Select type of Tshirt').toLowerCase().includes('black');
+  return (entry.garmentType || sourceColumnValue(entry.sourceRow, 'Select type of Tshirt')).toLowerCase().includes('black');
 }
 
 function garmentLabel(entry){
-  return sourceColumnValue(entry.sourceRow, 'Select type of Tshirt') || 'T-shirt type not recorded';
-  console.log(entry.sourceRow);
+  return entry.garmentType || sourceColumnValue(entry.sourceRow, 'Select type of Tshirt') || 'T-shirt type not recorded';
 }
 
 async function transliterate(englishName){
@@ -547,6 +546,7 @@ async function buildEntries(rows){
     return {
       safeId: safeIdFor(orderId),
       sourceRow: row,
+      garmentType: sourceColumnValue(row, 'Select type of Tshirt'),
       orderId,
       timestamp: getCol(row, 'colTimestamp'),
       orderer,
@@ -573,7 +573,8 @@ async function buildEntries(rows){
       if(selectError){ console.warn('Supabase seed lookup failed:', selectError); continue; }
       const rawFields = {
         safe_id:e.safeId, order_id:e.orderId, timestamp:e.timestamp, orderer:e.orderer,
-        original_print_name:e.originalPrintName, language:e.language, ref_link:e.refLink
+        original_print_name:e.originalPrintName, language:e.language, ref_link:e.refLink,
+        garment_type:e.garmentType
       };
       if(existing){
         const { error } = await db.from('entries').update(rawFields).eq('safe_id', e.safeId);
