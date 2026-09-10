@@ -68,6 +68,7 @@
   .empty h2{ font-weight:600; font-size:18px; color:var(--ink); margin-bottom:6px; }
 
   .grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:18px; }
+  .grid{ align-items:start; }
 
   .card{ background:var(--surface); border:1px solid var(--line); position:relative; padding:16px; }
   .card::before, .card::after{ content:""; position:absolute; width:10px; height:10px; border-top:1px solid var(--ink); border-left:1px solid var(--ink); top:-1px; left:-1px; }
@@ -387,18 +388,26 @@ async function loadRemoteEntries(){
 
 function mergeRemoteEntries(rows){
   const remote = {};
+  let changed = false;
   rows.forEach(row => { remote[row.safe_id] = row; });
   entries = entries.map(e => {
     const r = remote[e.safeId];
     if(!r) return e;
-    return { ...e, ...fromRemoteRow(r), safeId: e.safeId };
+    const remoteEntry = fromRemoteRow(r);
+    if(['printName','fontFamily','isOverridden','reviewed'].some(field => e[field] !== remoteEntry[field])) changed = true;
+    return { ...e, ...remoteEntry, safeId: e.safeId };
   });
   Object.keys(remote).forEach(id => {
-    if(!entries.find(e => e.safeId === id)) entries.push({ safeId:id, customFont:null, ...fromRemoteRow(remote[id]) });
+    if(!entries.find(e => e.safeId === id)){
+      entries.push({ safeId:id, customFont:null, ...fromRemoteRow(remote[id]) });
+      changed = true;
+    }
   });
   entries.sort((a, b) => String(a.safeId).localeCompare(String(b.safeId), 'en'));
-  cacheEntries();
-  render();
+  if(changed){
+    cacheEntries();
+    render();
+  }
 }
 
 function fromRemoteRow(row){
@@ -509,6 +518,7 @@ async function buildEntries(rows){
       : '';
     return {
       safeId: safeIdFor(orderId),
+      sourceRow: row,
       orderId,
       timestamp: getCol(row, 'colTimestamp'),
       orderer,
@@ -769,11 +779,17 @@ function downloadUpdatedCsv(){
     setLoadStatus('Nothing to export yet.', true);
     return;
   }
-  const headers = ['OrderID','Timestamp','Orderer','OriginalPrintName','PrintName','Language','FontFamily','Reviewed'];
-  const rows = entries.map(entry => [
-    entry.orderId, entry.timestamp, entry.orderer, entry.originalPrintName,
-    entry.printName, entry.language, entry.fontFamily, entry.reviewed ? 'true' : 'false'
-  ]);
+  const sourceHeaders = [...new Set(entries.flatMap(entry => Object.keys(entry.sourceRow || {})))];
+  const reviewHeaders = ['ReviewOrderID','ReviewTimestamp','ReviewOrderer','OriginalPrintName','FinalPrintName','ReviewLanguage','FontFamily','Reviewed'];
+  const headers = [...sourceHeaders, ...reviewHeaders];
+  const rows = entries.map(entry => {
+    const source = entry.sourceRow || {};
+    return [
+      ...sourceHeaders.map(header => source[header] ?? ''),
+      entry.orderId, entry.timestamp, entry.orderer, entry.originalPrintName,
+      entry.printName, entry.language, entry.fontFamily, entry.reviewed ? 'true' : 'false'
+    ];
+  });
   const csv = [headers, ...rows].map(row => row.map(csvEscape).join(',')).join('\n') + '\n';
   const url = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
   const link = document.createElement('a');
