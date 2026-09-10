@@ -506,6 +506,7 @@ function isDarkGarment(entry){
 
 function garmentLabel(entry){
   return sourceColumnValue(entry.sourceRow, 'Select type of Tshirt') || 'T-shirt type not recorded';
+  console.log(entry.sourceRow);
 }
 
 async function transliterate(englishName){
