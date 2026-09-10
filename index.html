@@ -127,6 +127,7 @@
   <span class="mono" style="font-size:12px;color:var(--ink-soft);">or</span>
   <input type="text" id="csvUrl" placeholder="Paste published Google Sheet CSV link…">
   <button class="ghost" id="loadUrlBtn">Fetch link</button>
+  <button class="ghost" id="downloadCsvBtn">Download updated CSV</button>
   <span class="load-status" id="loadStatus"></span>
   <button class="ghost" id="settingsBtn" style="margin-left:auto;">Settings</button>
 </div>
@@ -207,8 +208,9 @@ const ENGLISH_FONTS = ['Impact','Poppins','Montserrat','Playfair Display','Bebas
 const HINDI_FONTS = ['Yatra One','Noto Sans Devanagari','Hind','Baloo 2','Tiro Devanagari Hindi','Rozha One','Khand'];
 const ALL_FONTS = [...ENGLISH_FONTS, ...HINDI_FONTS];
 const STORAGE_KEY = 'avighna_proof_sheet_settings_v2';
+const ENTRIES_CACHE_KEY = 'avighna_proof_sheet_entries_v1';
 // Fill these once before deploying. The anon key is safe to expose in a browser app.
-const SHARED_SUPABASE_CONFIG = { url:'https://supabase.com/dashboard/project/zxhyuwkenuqhirpxmcza', anonKey:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4aHl1d2tlbnVxaGlycHhtY3phIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMzIwNjIsImV4cCI6MjEwNDYwODA2Mn0.m7z_TRzc9upz8nRG6UKNCbtyMGIgnKkPlRmgVjlfnC0' };
+const SHARED_SUPABASE_CONFIG = { url:'https://zxhyuwkenuqhirpxmcza.supabase.co', anonKey:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4aHl1d2tlbnVxaGlycHhtY3phIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMzIwNjIsImV4cCI6MjEwNDYwODA2Mn0.m7z_TRzc9upz8nRG6UKNCbtyMGIgnKkPlRmgVjlfnC0' };
 
 let entries = [];          // local mirror, keyed by array index; each has .safeId
 let settings = loadSettings();
@@ -259,6 +261,25 @@ function escapeHtml(s){
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function safeIdFor(orderId){ return String(orderId).replace(/[^a-zA-Z0-9_-]/g, '_'); }
+
+function cacheEntries(){
+  try{
+    const cached = entries.map(({ customFont, ...entry }) => entry);
+    localStorage.setItem(ENTRIES_CACHE_KEY, JSON.stringify({ savedAt:Date.now(), entries:cached }));
+  }catch(e){ console.warn('Could not cache entries locally:', e); }
+}
+
+function restoreCachedEntries(){
+  try{
+    const raw = localStorage.getItem(ENTRIES_CACHE_KEY);
+    if(!raw) return;
+    const cached = JSON.parse(raw);
+    if(!Array.isArray(cached.entries) || !cached.entries.length) return;
+    entries = cached.entries.map(entry => ({ customFont:null, ...entry }));
+    render();
+    setLoadStatus(`Restored ${entries.length} cached rows.`, false);
+  }catch(e){ console.warn('Could not restore cached entries:', e); }
+}
 
 // ---------------- Settings UI ----------------
 function initSettingsUI(){
@@ -363,6 +384,7 @@ function mergeRemoteEntries(rows){
   Object.keys(remote).forEach(id => {
     if(!entries.find(e => e.safeId === id)) entries.push({ safeId:id, customFont:null, ...fromRemoteRow(remote[id]) });
   });
+  cacheEntries();
   render();
 }
 
@@ -400,6 +422,8 @@ function subscribeToEntries(){
 }
 
 function debouncedWrite(safeId, field, value, delay){
+  const localEntry = findEntry(safeId);
+  if(localEntry) cacheEntries();
   if(!db) return;
   const key = safeId + ':' + field;
   clearTimeout(writeTimers[key]);
@@ -488,6 +512,7 @@ async function buildEntries(rows){
 
   // Always show the uploaded CSV locally, even when collaboration is unavailable.
   entries = parsed;
+  cacheEntries();
   render();
 
   if(db){
@@ -721,6 +746,31 @@ text{ font-family:'${familyForSvg}', sans-serif; font-size:${fontSize}px; fill:#
   URL.revokeObjectURL(url);
 }
 
+function csvEscape(value){
+  const text = String(value ?? '');
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function downloadUpdatedCsv(){
+  if(!entries.length){
+    setLoadStatus('Nothing to export yet.', true);
+    return;
+  }
+  const headers = ['OrderID','Timestamp','Orderer','OriginalPrintName','PrintName','Language','FontFamily','Reviewed'];
+  const rows = entries.map(entry => [
+    entry.orderId, entry.timestamp, entry.orderer, entry.originalPrintName,
+    entry.printName, entry.language, entry.fontFamily, entry.reviewed ? 'true' : 'false'
+  ]);
+  const csv = [headers, ...rows].map(row => row.map(csvEscape).join(',')).join('\n') + '\n';
+  const url = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'avighna-review-progress.csv';
+  link.click();
+  URL.revokeObjectURL(url);
+  setLoadStatus('Downloaded updated review CSV.', false);
+}
+
 // --- data loading triggers ---
 function setLoadStatus(message, isError){
   const status = document.getElementById('loadStatus');
@@ -757,6 +807,7 @@ function loadCsvFile(file){
 document.getElementById('csvFile').addEventListener('change', ev => {
   loadCsvFile(ev.target.files[0]);
 });
+document.getElementById('downloadCsvBtn').addEventListener('click', downloadUpdatedCsv);
 document.getElementById('loadUrlBtn').addEventListener('click', () => {
   const url = document.getElementById('csvUrl').value.trim();
   if(!url) return;
@@ -785,6 +836,7 @@ document.getElementById('hideReviewed').addEventListener('change', render);
 document.getElementById('sortBy').addEventListener('change', render);
 
 initSettingsUI();
+restoreCachedEntries();
 </script>
 </body>
 </html>
