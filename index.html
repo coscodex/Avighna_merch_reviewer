@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Montserrat:wght@400;700&family=Playfair+Display:wght@600&family=Bebas+Neue&family=Pacifico&family=Oswald:wght@500&family=Anton&family=Dancing+Script:wght@600&family=Noto+Sans+Devanagari:wght@400;600&family=Hind:wght@500&family=Baloo+2:wght@600&family=Yatra+One&family=Tiro+Devanagari+Hindi&family=Rozha+One&family=Khand:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
@@ -127,7 +128,7 @@
 <header>
   <div>
     <h1>Avighna'26 — Print Proof Sheet</h1>
-    <p>Load responses, check every name and font, edit anything that's off, and export the print-ready file — right here.</p>
+    <p>Load responses, check every name and font, edit anything that's off, and export print-ready SVGs as zip files.</p>
   </div>
   <div class="tag-row">
     <div class="sync-tag" id="syncTag"><span class="sync-dot"></span><span id="syncLabel">not connected</span></div>
@@ -141,8 +142,7 @@
   <span class="mono" style="font-size:12px;color:var(--ink-soft);">or</span>
   <input type="text" id="csvUrl" placeholder="Paste published Google Sheet CSV link…">
   <button class="ghost" id="loadUrlBtn">Fetch link</button>
-  <button class="ghost" id="downloadCsvBtn">Download updated CSV</button>
-  <button class="ghost" id="downloadVendorBtn">Download vendor CSV</button>
+  <button class="ghost" id="downloadZipsBtn">Download reviewed SVGs (3 zips)</button>
   <span class="load-status" id="loadStatus"></span>
   <button class="ghost" id="settingsBtn" style="margin-left:auto;">Settings</button>
 </div>
@@ -170,6 +170,7 @@
       <div class="field"><label>Name to print column</label><input type="text" id="colPrintName" value="Name on T-shirt( If you have chosen English language)"></div>
       <div class="field"><label>Language column</label><input type="text" id="colLanguage" value="T-shirt name language"></div>
       <div class="field"><label>Hindi handwriting link column</label><input type="text" id="colRefLink" value="If you have chosen Hindi as the language, please write your name in Hindi on paper and upload it here."></div>
+      <div class="field"><label>Size column</label><input type="text" id="colSize" value="Size"></div>
     </div>
   </div>
 
@@ -179,9 +180,9 @@
       <div class="field"><label>Default English font</label><select id="defaultEnglishFont"></select></div>
       <div class="field"><label>Upload Impact.ttf (for guaranteed embed)</label><span class="filebtn"><button class="small ghost">Upload file</button><input type="file" id="englishFontFile" accept=".ttf,.otf"></span></div>
       <div class="field"><label>Default Hindi font</label><select id="defaultHindiFont"></select></div>
-      <div class="field"><label>Upload Hindi font file (optional)</label><span class="filebtn"><button class="small ghost">Upload file</button><input type="file" id="hindiFontFile" accept=".ttf,.otf"></span></div>
+      <div class="field"><label>Upload Hindi font file (AMS Shikha.ttf, etc.)</label><span class="filebtn"><button class="small ghost">Upload file</button><input type="file" id="hindiFontFile" accept=".ttf,.otf,.TTF,.OTF"></span></div>
     </div>
-    <p class="hint">"Impact" is a system font, not a downloadable web font, so exported files can only embed it if you upload the exact .ttf (most Windows machines have it at C:\Windows\Fonts\Impact.ttf; on Mac it's in Font Book). "Yatra One" is a real Google Font, so it embeds automatically.</p>
+    <p class="hint">Impact and AMS Shikha are not Google Fonts, so upload the .ttf once here (or per card). After uploading AMS Shikha.ttf, pick "AMS Shikha" in the Hindi font list. Uploaded files stay in this browser tab until you refresh.</p>
   </div>
 
   <div>
@@ -220,8 +221,8 @@
 
 <script>
 const ENGLISH_FONTS = ['Impact','Poppins','Montserrat','Playfair Display','Bebas Neue','Pacifico','Oswald','Anton','Dancing Script'];
-const HINDI_FONTS = ['Yatra One','Noto Sans Devanagari','Hind','Baloo 2','Tiro Devanagari Hindi','Rozha One','Khand'];
-const ALL_FONTS = [...ENGLISH_FONTS, ...HINDI_FONTS];
+const HINDI_FONTS = ['AMS Shikha','Yatra One','Noto Sans Devanagari','Hind','Baloo 2','Tiro Devanagari Hindi','Rozha One','Khand'];
+function allFonts(){ return [...englishFontList(), ...hindiFontList()]; }
 const STORAGE_KEY = 'avighna_proof_sheet_settings_v2';
 const ENTRIES_CACHE_KEY = 'avighna_proof_sheet_entries_v1';
 // Fill these once before deploying. The anon key is safe to expose in a browser app.
@@ -236,7 +237,7 @@ let syncPollTimer = null;  // fallback when Supabase Realtime is unavailable
 
 function defaultSettings(){
   return {
-    columns: { colOrderId:'Timestamp', colTimestamp:'Timestamp', colOrderer:'Name', colPrintName:'Name on T-shirt( If you have chosen English language)', colLanguage:'T-shirt name language', colRefLink:'If you have chosen Hindi as the language, please write your name in Hindi on paper and upload it here.' },
+    columns: { colOrderId:'Timestamp', colTimestamp:'Timestamp', colOrderer:'Name', colPrintName:'Name on T-shirt( If you have chosen English language)', colLanguage:'T-shirt name language', colRefLink:'If you have chosen Hindi as the language, please write your name in Hindi on paper and upload it here.', colSize:'Size' },
     defaultEnglishFont: 'Impact',
     defaultHindiFont: 'Yatra One',
     englishFontFile: null,
@@ -265,11 +266,39 @@ function loadSettings(){
 }
 function saveSettings(){
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    const { englishFontFile, hindiFontFile, ...persistable } = settings;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persistable));
     const el = document.getElementById('saveStatus');
     el.textContent = 'Settings saved to this browser.';
     setTimeout(()=> el.textContent='', 2000);
   }catch(e){ console.warn('Could not save settings', e); }
+}
+
+function familyFromFileName(name){
+  const raw = String(name || '').replace(/\.(ttf|otf)$/i, '').replace(/[_-]+/g, ' ').trim();
+  if(/shikha/i.test(raw)) return 'AMS Shikha';
+  if(/^impact$/i.test(raw)) return 'Impact';
+  return raw || 'Custom Font';
+}
+function fontFormat(ext){ return String(ext).toLowerCase() === 'otf' ? 'opentype' : 'truetype'; }
+function fontMime(ext){ return String(ext).toLowerCase() === 'otf' ? 'font/otf' : 'font/ttf'; }
+function sameFamily(a, b){ return String(a||'').trim().toLowerCase() === String(b||'').trim().toLowerCase(); }
+function fontFaceRule(family, file){
+  return `@font-face{font-family:'${family}';src:url(data:${fontMime(file.ext)};base64,${file.base64}) format('${fontFormat(file.ext)}');font-display:block;}`;
+}
+function injectNamedFontFace(family, file){
+  const styleId = `face-${family.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  let styleTag = document.getElementById(styleId);
+  if(!styleTag){ styleTag = document.createElement('style'); styleTag.id = styleId; document.head.appendChild(styleTag); }
+  styleTag.textContent = fontFaceRule(family, file);
+}
+function englishFontList(){
+  const extra = settings.englishFontFile?.family;
+  return extra && !ENGLISH_FONTS.includes(extra) ? [extra, ...ENGLISH_FONTS] : ENGLISH_FONTS;
+}
+function hindiFontList(){
+  const extra = settings.hindiFontFile?.family;
+  return extra && !HINDI_FONTS.includes(extra) ? [extra, ...HINDI_FONTS] : HINDI_FONTS;
 }
 
 function escapeHtml(s){
@@ -297,14 +326,21 @@ function restoreCachedEntries(){
 }
 
 // ---------------- Settings UI ----------------
-function initSettingsUI(){
-  Object.entries(settings.columns).forEach(([key, val]) => { document.getElementById(key).value = val; });
+function fillFontSelects(){
   const engSel = document.getElementById('defaultEnglishFont');
   const hinSel = document.getElementById('defaultHindiFont');
-  engSel.innerHTML = ENGLISH_FONTS.map(f => `<option value="${f}">${f}</option>`).join('');
-  hinSel.innerHTML = HINDI_FONTS.map(f => `<option value="${f}">${f}</option>`).join('');
+  engSel.innerHTML = englishFontList().map(f => `<option value="${f}">${f}</option>`).join('');
+  hinSel.innerHTML = hindiFontList().map(f => `<option value="${f}">${f}</option>`).join('');
   engSel.value = settings.defaultEnglishFont;
   hinSel.value = settings.defaultHindiFont;
+}
+
+function initSettingsUI(){
+  Object.entries(settings.columns).forEach(([key, val]) => {
+    const el = document.getElementById(key);
+    if(el) el.value = val;
+  });
+  fillFontSelects();
   renderOverrideList();
 
   const sharedUrl = SHARED_SUPABASE_CONFIG.url || settings.supabaseUrl;
@@ -321,7 +357,7 @@ function renderOverrideList(){
   list.innerHTML = settings.overrides.map((o, i) => `
     <div class="override-row">
       <input type="text" placeholder="Order ID or exact printed name" value="${escapeHtml(o.match)}" data-i="${i}" class="ov-match">
-      <select data-i="${i}" class="ov-font">${ALL_FONTS.map(f => `<option value="${f}" ${f===o.font?'selected':''}>${f}</option>`).join('')}</select>
+      <select data-i="${i}" class="ov-font">${allFonts().map(f => `<option value="${f}" ${f===o.font?'selected':''}>${f}</option>`).join('')}</select>
       <button class="small ghost ov-remove" data-i="${i}">Remove</button>
     </div>`).join('');
   list.querySelectorAll('.ov-match').forEach(el => el.addEventListener('input', ev => { settings.overrides[+ev.target.dataset.i].match = ev.target.value; }));
@@ -338,8 +374,29 @@ function fileToBase64(file){
     reader.readAsDataURL(file);
   });
 }
-document.getElementById('englishFontFile').addEventListener('change', async ev => { const f=ev.target.files[0]; if(!f) return; settings.englishFontFile = { ext: f.name.split('.').pop().toLowerCase(), base64: await fileToBase64(f) }; });
-document.getElementById('hindiFontFile').addEventListener('change', async ev => { const f=ev.target.files[0]; if(!f) return; settings.hindiFontFile = { ext: f.name.split('.').pop().toLowerCase(), base64: await fileToBase64(f) }; });
+document.getElementById('englishFontFile').addEventListener('change', async ev => {
+  const f = ev.target.files[0]; if(!f) return;
+  settings.englishFontFile = { family: familyFromFileName(f.name), name: f.name, ext: f.name.split('.').pop().toLowerCase(), base64: await fileToBase64(f) };
+  injectNamedFontFace(settings.englishFontFile.family, settings.englishFontFile);
+  fillFontSelects();
+  renderOverrideList();
+  render();
+});
+document.getElementById('hindiFontFile').addEventListener('change', async ev => {
+  const f = ev.target.files[0]; if(!f) return;
+  settings.hindiFontFile = { family: familyFromFileName(f.name), name: f.name, ext: f.name.split('.').pop().toLowerCase(), base64: await fileToBase64(f) };
+  injectNamedFontFace(settings.hindiFontFile.family, settings.hindiFontFile);
+  try{ await document.fonts.load(`38px "${settings.hindiFontFile.family}"`); }catch(err){}
+  settings.defaultHindiFont = settings.hindiFontFile.family;
+  entries.forEach(e => {
+    if(e.language === 'hindi' && !e.customFont){
+      e.fontFamily = settings.hindiFontFile.family;
+    }
+  });
+  fillFontSelects();
+  renderOverrideList();
+  render();
+});
 
 // ---------------- Supabase (collaboration) ----------------
 function setSyncStatus(connected, label){
@@ -409,7 +466,7 @@ function mergeRemoteEntries(rows){
     if(!r) return e;
     const remoteEntry = fromRemoteRow(r);
     if(['printName','fontFamily','isOverridden','reviewed'].some(field => e[field] !== remoteEntry[field])) changed = true;
-    return { ...e, ...remoteEntry, safeId: e.safeId };
+    return { ...e, ...remoteEntry, size: remoteEntry.size || e.size, garmentType: remoteEntry.garmentType || e.garmentType, safeId: e.safeId };
   });
   Object.keys(remote).forEach(id => {
     if(!entries.find(e => e.safeId === id)){
@@ -429,7 +486,7 @@ function fromRemoteRow(row){
     orderId: row.order_id, timestamp: row.timestamp, orderer: row.orderer,
     originalPrintName: row.original_print_name, printName: row.print_name,
     language: row.language, refLink: row.ref_link, fontFamily: row.font_family,
-    garmentType: row.garment_type || '', isOverridden: row.is_overridden, reviewed: row.reviewed
+    garmentType: row.garment_type || '', size: row.size || '', isOverridden: row.is_overridden, reviewed: row.reviewed
   };
 }
 
@@ -477,7 +534,8 @@ function debouncedWrite(safeId, field, value, delay){
 
 // ---------------- Data loading ----------------
 function getCol(row, key){
-  const target = settings.columns[key].trim().toLowerCase();
+  const target = (settings.columns[key] || '').trim().toLowerCase();
+  if(!target || !row) return '';
   const foundKey = Object.keys(row).find(k => k.trim().toLowerCase() === target);
   return foundKey ? (row[foundKey] || '').toString().trim() : '';
 }
@@ -500,12 +558,39 @@ function sourceColumnValue(row, target){
   return key ? String(row[key] ?? '').trim() : '';
 }
 
+function garmentSize(entry){
+  if(entry.size) return String(entry.size).trim();
+  const mapped = settings.columns.colSize ? getCol(entry.sourceRow || {}, 'colSize') : '';
+  if(mapped) return mapped;
+  const row = entry.sourceRow || {};
+  const sizeValues = Object.keys(row)
+    .filter(k => /size/i.test(k) && !/type of tshirt|t-?shirt type/i.test(k))
+    .map(k => String(row[k] || '').trim())
+    .filter(Boolean);
+  return sizeValues.length ? sizeValues[sizeValues.length - 1] : '';
+}
+
 function isDarkGarment(entry){
-  return (entry.garmentType || sourceColumnValue(entry.sourceRow, 'Select type of Tshirt')).toLowerCase().includes('black');
+  return garmentColor(entry) === 'black';
 }
 
 function garmentLabel(entry){
   return entry.garmentType || sourceColumnValue(entry.sourceRow, 'Select type of Tshirt') || 'T-shirt type not recorded';
+}
+
+function garmentColor(entry){
+  const label = garmentLabel(entry).toLowerCase();
+  if(label.includes('black')) return 'black';
+  if(label.includes('white')) return 'white';
+  return 'white';
+}
+
+function garmentGroup(entry){
+  const label = garmentLabel(entry).toLowerCase();
+  if(/calligraphy/.test(label)) return 'calligraphy';
+  if(/collar/.test(label)) return 'collar';
+  if(/round/.test(label)) return 'round-neck';
+  return 'other';
 }
 
 async function transliterate(englishName){
@@ -547,6 +632,7 @@ async function buildEntries(rows){
       safeId: safeIdFor(orderId),
       sourceRow: row,
       garmentType: sourceColumnValue(row, 'Select type of Tshirt'),
+      size: getCol(row, 'colSize') || sourceColumnValue(row, 'Size'),
       orderId,
       timestamp: getCol(row, 'colTimestamp'),
       orderer,
@@ -574,7 +660,7 @@ async function buildEntries(rows){
       const rawFields = {
         safe_id:e.safeId, order_id:e.orderId, timestamp:e.timestamp, orderer:e.orderer,
         original_print_name:e.originalPrintName, language:e.language, ref_link:e.refLink,
-        garment_type:e.garmentType
+        garment_type:e.garmentType, size:e.size
       };
       if(existing){
         const { error } = await db.from('entries').update(rawFields).eq('safe_id', e.safeId);
@@ -606,8 +692,10 @@ function restoreFocus(){
 }
 
 function render(){
-  console.log("helloooooo");
   captureFocus();
+  if(settings.englishFontFile) injectNamedFontFace(settings.englishFontFile.family, settings.englishFontFile);
+  if(settings.hindiFontFile) injectNamedFontFace(settings.hindiFontFile.family, settings.hindiFontFile);
+  entries.forEach(e => { if(e.customFont?.family) injectNamedFontFace(e.customFont.family, e.customFont); });
   const grid = document.getElementById('grid');
   const empty = document.getElementById('emptyState');
   const showSkipped = document.getElementById('showSkipped').checked;
@@ -627,9 +715,11 @@ function render(){
   empty.style.display='none';
 
   grid.innerHTML = visible.map((e) => {
-    const fontList = e.language === 'hindi' ? HINDI_FONTS : ENGLISH_FONTS;
-    const fontOptions = fontList.map(f => `<option value="${f}" ${e.fontFamily===f?'selected':''}>${f}</option>`).join('');
-    const activeFontCss = e.customFont ? `'custom-${e.safeId}'` : `'${e.fontFamily}', sans-serif`;
+    const fontList = e.language === 'hindi' ? hindiFontList() : englishFontList();
+    const extraFont = e.customFont?.family;
+    const fontsForCard = extraFont && !fontList.includes(extraFont) ? [extraFont, ...fontList] : fontList;
+    const fontOptions = fontsForCard.map(f => `<option value="${f}" ${e.fontFamily===f?'selected':''}>${f}</option>`).join('');
+    const activeFontCss = `'${e.customFont?.family || e.fontFamily}', sans-serif`;
     const refImg = driveDirectLink(e.refLink);
     const showRef = e.language === 'hindi' && e.refLink;
     const showOriginal = e.printName !== e.originalPrintName;
@@ -646,7 +736,7 @@ function render(){
           <div class="lang-chip ${e.language==='hindi'?'hindi':''}">${e.language}</div>
         </div>
       </div>
-      <div class="garment-chip">${escapeHtml(garmentLabel(e))}</div>
+      <div class="garment-chip">${escapeHtml(garmentSize(e) ? `${garmentSize(e)} · ${garmentLabel(e)}` : garmentLabel(e))}</div>
       ${e.orderer && e.orderer !== e.originalPrintName ? `<div class="ordered-by">Ordered by ${escapeHtml(e.orderer)}</div>` : ''}
       ${showOriginal ? `<div class="original-name">As entered: ${escapeHtml(e.originalPrintName)}</div>` : ''}
 
@@ -656,7 +746,7 @@ function render(){
 
       <div class="controls-row">
         <select data-safeid="${e.safeId}" class="fontSelect">${fontOptions}</select>
-        <span class="filebtn"><button class="small ghost">Upload font</button><input type="file" accept=".ttf,.otf" class="fontUpload" data-safeid="${e.safeId}"></span>
+        <span class="filebtn"><button class="small ghost">Upload font</button><input type="file" accept=".ttf,.otf,.TTF,.OTF" class="fontUpload" data-safeid="${e.safeId}"></span>
       </div>
 
       ${showRef ? `
@@ -696,7 +786,7 @@ function attachCardListeners(){
       const safeId = ev.target.dataset.safeid;
       const entry = findEntry(safeId);
       entry.fontFamily = ev.target.value;
-      entry.customFont = null;
+      if(!sameFamily(ev.target.value, entry.customFont?.family)) entry.customFont = null;
       entry.isOverridden = true;
       debouncedWrite(safeId, 'fontFamily', ev.target.value, 0);
       debouncedWrite(safeId, 'isOverridden', true, 0);
@@ -710,8 +800,14 @@ function attachCardListeners(){
       if(!file) return;
       const base64 = await fileToBase64(file);
       const entry = findEntry(safeId);
-      entry.customFont = { name: file.name, base64, ext: file.name.split('.').pop().toLowerCase() };
-      injectCustomFontFace(safeId, entry.customFont);
+      const family = familyFromFileName(file.name);
+      entry.customFont = { family, name: file.name, base64, ext: file.name.split('.').pop().toLowerCase() };
+      entry.fontFamily = family;
+      entry.isOverridden = true;
+      injectNamedFontFace(family, entry.customFont);
+      try{ await document.fonts.load(`38px "${family}"`); }catch(err){}
+      debouncedWrite(safeId, 'fontFamily', family, 0);
+      debouncedWrite(safeId, 'isOverridden', true, 0);
       render();
     });
   });
@@ -727,14 +823,6 @@ function attachCardListeners(){
   document.querySelectorAll('.downloadBtn').forEach(el => {
     el.addEventListener('click', ev => downloadEntry(ev.target.dataset.safeid));
   });
-}
-
-function injectCustomFontFace(safeId, customFont){
-  const styleId = `custom-face-${safeId}`;
-  let styleTag = document.getElementById(styleId);
-  if(!styleTag){ styleTag = document.createElement('style'); styleTag.id = styleId; document.head.appendChild(styleTag); }
-  const fmt = customFont.ext === 'otf' ? 'opentype' : 'truetype';
-  styleTag.textContent = `@font-face{font-family:'custom-${safeId}';src:url(data:font/${customFont.ext};base64,${customFont.base64}) format('${fmt}');}`;
 }
 
 function arrayBufferToBase64(buf){
@@ -755,123 +843,177 @@ async function fetchGoogleFontBase64(family){
   }catch(e){ console.warn('Could not embed preset font:', e); return null; }
 }
 
-async function downloadEntry(safeId){
-  const e = findEntry(safeId);
-  const statusEl = document.getElementById(`status-${safeId}`);
-  statusEl.textContent = 'preparing…';
-  statusEl.classList.remove('embedded','warn');
+function uploadedFileForFamily(family){
+  if(settings.englishFontFile && sameFamily(family, settings.englishFontFile.family)) return settings.englishFontFile;
+  if(settings.hindiFontFile && sameFamily(family, settings.hindiFontFile.family)) return settings.hindiFontFile;
+  if(sameFamily(family, 'Impact') && settings.englishFontFile) return settings.englishFontFile;
+  if(sameFamily(family, 'AMS Shikha') && settings.hindiFontFile) return settings.hindiFontFile;
+  return null;
+}
 
-  const width = 1200, height = 400, fontSize = 100;
-  const textColor = isDarkGarment(e) ? '#fff' : '#000';
+async function resolveEntryFont(e){
+  let family = e.customFont?.family || e.fontFamily || 'sans-serif';
   let fontFaceCss = '';
-  let familyForSvg = e.fontFamily;
+  let note = { text: 'preset font', cls: '' };
 
   if(e.customFont){
-    familyForSvg = `custom-${safeId}`;
-    const fmt = e.customFont.ext === 'otf' ? 'opentype' : 'truetype';
-    fontFaceCss = `@font-face{font-family:'${familyForSvg}';src:url(data:font/${e.customFont.ext};base64,${e.customFont.base64}) format('${fmt}');}`;
-    statusEl.textContent = 'custom font · embedded'; statusEl.classList.add('embedded');
-  } else if(e.fontFamily === 'Impact' && settings.englishFontFile){
-    const fmt = settings.englishFontFile.ext === 'otf' ? 'opentype' : 'truetype';
-    fontFaceCss = `@font-face{font-family:'Impact';src:url(data:font/${settings.englishFontFile.ext};base64,${settings.englishFontFile.base64}) format('${fmt}');}`;
-    statusEl.textContent = 'Impact · embedded from uploaded file'; statusEl.classList.add('embedded');
-  } else if(e.fontFamily === 'Impact'){
-    statusEl.textContent = 'Impact NOT embedded — upload Impact.ttf in Settings'; statusEl.classList.add('warn');
+    family = e.customFont.family || family;
+    fontFaceCss = fontFaceRule(family, e.customFont);
+    injectNamedFontFace(family, e.customFont);
+    note = { text: 'custom font · embedded', cls: 'embedded' };
   } else {
-    const embedded = await fetchGoogleFontBase64(e.fontFamily);
-    if(embedded){
-      fontFaceCss = `@font-face{font-family:'${familyForSvg}';src:url(data:font/${embedded.format};base64,${embedded.base64}) format('${embedded.format}');}`;
-      statusEl.textContent = 'font embedded'; statusEl.classList.add('embedded');
+    const uploaded = uploadedFileForFamily(e.fontFamily);
+    if(uploaded){
+      family = uploaded.family || e.fontFamily;
+      fontFaceCss = fontFaceRule(family, uploaded);
+      injectNamedFontFace(family, uploaded);
+      note = { text: `${family} · embedded from uploaded file`, cls: 'embedded' };
+    } else if(sameFamily(e.fontFamily, 'Impact')){
+      note = { text: 'Impact NOT embedded — upload Impact.ttf in Settings', cls: 'warn' };
+    } else if(sameFamily(e.fontFamily, 'AMS Shikha')){
+      note = { text: 'AMS Shikha NOT embedded — upload AMS Shikha.ttf in Settings or on this card', cls: 'warn' };
     } else {
-      statusEl.textContent = 'font NOT embedded — verify with vendor'; statusEl.classList.add('warn');
+      const embedded = await fetchGoogleFontBase64(e.fontFamily);
+      if(embedded){
+        fontFaceCss = `@font-face{font-family:'${family}';src:url(data:font/${embedded.format};base64,${embedded.base64}) format('${embedded.format}');}`;
+        note = { text: 'font embedded', cls: 'embedded' };
+      } else {
+        note = { text: 'font NOT embedded — verify with vendor', cls: 'warn' };
+      }
     }
   }
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-<style>${fontFaceCss}
-text{ font-family:'${familyForSvg}', sans-serif; font-size:${fontSize}px; fill:${textColor}; }
-</style>
-<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle">${escapeHtml(e.printName)}</text>
-</svg>`;
+  try{ await document.fonts.load(`100px "${family}"`); await document.fonts.ready; }catch(err){}
+  return { family, fontFaceCss, note };
+}
 
-  const blob = new Blob([svg], { type: 'image/svg+xml' });
+function measureTextBox(text, family, fontSize){
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.font = `${fontSize}px "${family}", sans-serif`;
+  const m = ctx.measureText(text || ' ');
+  const width = Math.max(m.width || 0, fontSize * 0.4);
+  const ascent = m.actualBoundingBoxAscent || fontSize * 0.8;
+  const descent = m.actualBoundingBoxDescent || fontSize * 0.25;
+  return { width, ascent, descent };
+}
+
+function buildPrintSvg(text, family, fontFaceCss, fill){
+  const fontSize = 100;
+  const padX = 24;
+  const padY = 20;
+  const box = measureTextBox(text, family, fontSize);
+  const width = Math.ceil(box.width + padX * 2);
+  const height = Math.ceil(box.ascent + box.descent + padY * 2);
+  const x = (width / 2).toFixed(2);
+  const y = (padY + box.ascent).toFixed(2);
+  const style = `${fontFaceCss}
+text{font-family:'${family}',sans-serif;font-size:${fontSize}px;fill:${fill};}`;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" overflow="visible">
+<defs><style type="text/css"><![CDATA[${style}]]></style></defs>
+<text x="${x}" y="${y}" text-anchor="middle">${escapeHtml(text)}</text>
+</svg>`;
+}
+
+async function buildEntrySvg(e){
+  const { family, fontFaceCss, note } = await resolveEntryFont(e);
+  const fill = isDarkGarment(e) ? '#ffffff' : '#000000';
+  const svg = buildPrintSvg(e.printName || '', family, fontFaceCss, fill);
+  return { svg, note };
+}
+
+function svgFileName(entry){
+  const name = String(entry.printName || 'name')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^\p{L}\p{N}_-]/gu, '');
+  const size = String(garmentSize(entry) || 'na').trim().toLowerCase().replace(/\s+/g, '');
+  return `${name || 'name'}_${size || 'na'}.svg`;
+}
+
+function uniqueName(used, fileName){
+  if(!used.has(fileName)){ used.add(fileName); return fileName; }
+  const stem = fileName.replace(/\.svg$/i, '');
+  let i = 2;
+  let next;
+  do { next = `${stem}_${i}.svg`; i += 1; } while(used.has(next));
+  used.add(next);
+  return next;
+}
+
+function triggerDownload(blob, fileName){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `${safeId}_${e.language}.svg`; a.click();
+  a.href = url;
+  a.download = fileName;
+  a.click();
   URL.revokeObjectURL(url);
 }
 
-function csvEscape(value){
-  const text = String(value ?? '');
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+async function downloadEntry(safeId){
+  const e = findEntry(safeId);
+  const statusEl = document.getElementById(`status-${safeId}`);
+  if(statusEl){
+    statusEl.textContent = 'preparing…';
+    statusEl.classList.remove('embedded','warn');
+  }
+  const { svg, note } = await buildEntrySvg(e);
+  if(statusEl){
+    statusEl.textContent = note.text;
+    if(note.cls) statusEl.classList.add(note.cls);
+  }
+  triggerDownload(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }), svgFileName(e));
 }
 
-function downloadUpdatedCsv(){
-  if(!entries.length){
-    setLoadStatus('Nothing to export yet.', true);
+const ZIP_GROUPS = [
+  { id:'calligraphy', zipName:'Round-Neck Tshirt (White - Calligraphy).zip', folder:'Round-Neck Tshirt (White - Calligraphy)' },
+  { id:'round-neck', zipName:'Round-Neck Tshirt.zip', folder:'Round-Neck Tshirt' },
+  { id:'collar', zipName:'Collar Tshirt.zip', folder:'Collar Tshirt' }
+];
+
+async function downloadReviewedZips(){
+  if(typeof JSZip === 'undefined'){
+    setLoadStatus('Zip library failed to load. Refresh the page.', true);
     return;
   }
-  const sourceHeaders = [...new Set(entries.flatMap(entry => Object.keys(entry.sourceRow || {})))];
-  const reviewHeaders = ['ReviewOrderID','ReviewTimestamp','ReviewOrderer','OriginalPrintName','FinalPrintName','ReviewLanguage','FontFamily','Reviewed'];
-  const headers = [...sourceHeaders, ...reviewHeaders];
-  const rows = entries.map(entry => {
-    const source = entry.sourceRow || {};
-    return [
-      ...sourceHeaders.map(header => source[header] ?? ''),
-      entry.orderId, entry.timestamp, entry.orderer, entry.originalPrintName,
-      entry.printName, entry.language, entry.fontFamily, entry.reviewed ? 'true' : 'false'
-    ];
-  });
-  const csv = [headers, ...rows].map(row => row.map(csvEscape).join(',')).join('\n') + '\n';
-  const url = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'avighna-review-progress.csv';
-  link.click();
-  URL.revokeObjectURL(url);
-  setLoadStatus('Downloaded updated review CSV.', false);
-}
-
-function vendorSvgMarkup(entry){
-  const safeText = escapeHtml(entry.printName || '');
-  const family = escapeHtml(entry.fontFamily || 'sans-serif');
-  const color = isDarkGarment(entry) ? '#fff' : '#000';
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400"><text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" style="font-family:'${family}';font-size:100px;fill:${color}">${safeText}</text></svg>`;
-}
-
-function downloadVendorCsv(){
-  if(!entries.length){
-    setLoadStatus('Nothing to export yet.', true);
+  const reviewed = entries.filter(e => e.reviewed && e.language !== 'none' && String(e.printName || '').trim());
+  if(!reviewed.length){
+    setLoadStatus('Mark at least one named entry as reviewed before exporting.', true);
     return;
   }
-  const sourceHeaders = [...new Set(entries.flatMap(entry => Object.keys(entry.sourceRow || {})))];
-  const vendorHeaders = ['VendorOrderKey','FinalPrintName','SVGFilename','SVGMarkup'];
-  const headers = [...sourceHeaders, ...vendorHeaders];
-  const orderedEntries = [...entries].sort((a, b) => {
-    const aNoName = a.language === 'none' || !a.printName;
-    const bNoName = b.language === 'none' || !b.printName;
-    if(aNoName !== bNoName) return aNoName ? 1 : -1;
-    return String(a.safeId).localeCompare(String(b.safeId), 'en');
-  });
-  const rows = orderedEntries.map(entry => {
-    const source = entry.sourceRow || {};
-    const key = `${entry.timestamp || entry.orderId} | ${entry.orderer || ''}`;
-    return [
-      ...sourceHeaders.map(header => source[header] ?? ''),
-      key,
-      entry.printName || '',
-      `${entry.safeId}_${entry.language}.svg`,
-      vendorSvgMarkup(entry)
-    ];
-  });
-  const csv = [headers, ...rows].map(row => row.map(csvEscape).join(',')).join('\n') + '\n';
-  const url = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'avighna-vendor-print-sheet.csv';
-  link.click();
-  URL.revokeObjectURL(url);
-  setLoadStatus('Downloaded vendor CSV with SVG markup.', false);
+
+  const grouped = { calligraphy:[], 'round-neck':[], collar:[], other:[] };
+  reviewed.forEach(e => grouped[garmentGroup(e)].push(e));
+
+  setLoadStatus('Building print-ready SVG zips…', false);
+  const downloaded = [];
+  for(const group of ZIP_GROUPS){
+    const list = grouped[group.id];
+    if(!list.length) continue;
+    const zip = new JSZip();
+    zip.folder(`${group.folder}/white`);
+    zip.folder(`${group.folder}/black`);
+    const used = { white: new Set(), black: new Set() };
+    for(const entry of list){
+      const color = garmentColor(entry);
+      const { svg } = await buildEntrySvg(entry);
+      const fileName = uniqueName(used[color], svgFileName(entry));
+      zip.file(`${group.folder}/${color}/${fileName}`, svg);
+    }
+    const blob = await zip.generateAsync({ type:'blob' });
+    triggerDownload(blob, group.zipName);
+    downloaded.push(`${group.zipName} (${list.length})`);
+    await new Promise(resolve => setTimeout(resolve, 400));
+  }
+
+  const leftover = grouped.other.length;
+  if(!downloaded.length){
+    setLoadStatus(leftover ? `${leftover} reviewed rows did not match Round-Neck / Collar categories.` : 'Nothing to export.', true);
+    return;
+  }
+  setLoadStatus(`Downloaded ${downloaded.join(', ')}${leftover ? `. Skipped ${leftover} unmatched garment type(s).` : '.'}`, false);
 }
 
 // --- data loading triggers ---
@@ -910,8 +1052,12 @@ function loadCsvFile(file){
 document.getElementById('csvFile').addEventListener('change', ev => {
   loadCsvFile(ev.target.files[0]);
 });
-document.getElementById('downloadCsvBtn').addEventListener('click', downloadUpdatedCsv);
-document.getElementById('downloadVendorBtn').addEventListener('click', downloadVendorCsv);
+document.getElementById('downloadZipsBtn').addEventListener('click', () => {
+  downloadReviewedZips().catch(error => {
+    console.error(error);
+    setLoadStatus(`Could not build zips: ${error.message}`, true);
+  });
+});
 document.getElementById('loadUrlBtn').addEventListener('click', () => {
   const url = document.getElementById('csvUrl').value.trim();
   if(!url) return;
@@ -924,7 +1070,10 @@ document.getElementById('loadUrlBtn').addEventListener('click', () => {
 document.getElementById('settingsBtn').addEventListener('click', () => document.getElementById('settingsPanel').classList.toggle('open'));
 
 document.getElementById('applyMapping').addEventListener('click', () => {
-  Object.keys(settings.columns).forEach(key => { settings.columns[key] = document.getElementById(key).value.trim(); });
+  Object.keys(settings.columns).forEach(key => {
+    const el = document.getElementById(key);
+    if(el) settings.columns[key] = el.value.trim();
+  });
   settings.defaultEnglishFont = document.getElementById('defaultEnglishFont').value;
   settings.defaultHindiFont = document.getElementById('defaultHindiFont').value;
   saveSettings();
