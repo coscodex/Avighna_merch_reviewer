@@ -145,12 +145,12 @@
   <div>
     <h3>Column mapping</h3>
     <div class="settings-row">
-      <div class="field"><label>Order ID column</label><input type="text" id="colOrderId" value="OrderID"></div>
+      <div class="field"><label>Order ID column</label><input type="text" id="colOrderId" value="Timestamp"></div>
       <div class="field"><label>Timestamp column</label><input type="text" id="colTimestamp" value="Timestamp"></div>
       <div class="field"><label>Orderer name column</label><input type="text" id="colOrderer" value="Name"></div>
-      <div class="field"><label>Name to print column</label><input type="text" id="colPrintName" value="Name on T-Shirt"></div>
-      <div class="field"><label>Language column</label><input type="text" id="colLanguage" value="Language"></div>
-      <div class="field"><label>Hindi handwriting link column</label><input type="text" id="colRefLink" value="Handwriting Reference"></div>
+      <div class="field"><label>Name to print column</label><input type="text" id="colPrintName" value="Name on T-shirt( If you have chosen English language)"></div>
+      <div class="field"><label>Language column</label><input type="text" id="colLanguage" value="T-shirt name language"></div>
+      <div class="field"><label>Hindi handwriting link column</label><input type="text" id="colRefLink" value="If you have chosen Hindi as the language, please write your name in Hindi on paper and upload it here."></div>
     </div>
   </div>
 
@@ -213,7 +213,7 @@ let writeTimers = {};      // debounce handles per safeId+field
 
 function defaultSettings(){
   return {
-    columns: { colOrderId:'OrderID', colTimestamp:'Timestamp', colOrderer:'Name', colPrintName:'Name on T-Shirt', colLanguage:'Language', colRefLink:'Handwriting Reference' },
+    columns: { colOrderId:'Timestamp', colTimestamp:'Timestamp', colOrderer:'Name', colPrintName:'Name on T-shirt( If you have chosen English language)', colLanguage:'T-shirt name language', colRefLink:'If you have chosen Hindi as the language, please write your name in Hindi on paper and upload it here.' },
     defaultEnglishFont: 'Impact',
     defaultHindiFont: 'Yatra One',
     englishFontFile: null,
@@ -224,8 +224,21 @@ function defaultSettings(){
   };
 }
 function loadSettings(){
-  try{ const raw = localStorage.getItem(STORAGE_KEY); if(raw) return { ...defaultSettings(), ...JSON.parse(raw) }; }catch(e){}
-  return defaultSettings();
+  const defaults = defaultSettings();
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return defaults;
+    const saved = JSON.parse(raw);
+    const columns = { ...defaults.columns, ...(saved.columns || {}) };
+    const oldDefaults = {
+      colOrderId:'OrderID', colPrintName:'Name on T-Shirt',
+      colLanguage:'Language', colRefLink:'Handwriting Reference'
+    };
+    Object.entries(oldDefaults).forEach(([key, value]) => {
+      if(columns[key] === value) columns[key] = defaults.columns[key];
+    });
+    return { ...defaults, ...saved, columns };
+  }catch(e){ return defaults; }
 }
 function saveSettings(){
   try{
