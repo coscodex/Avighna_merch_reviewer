@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Avighna'26 — Print Proof Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Montserrat:wght@400;700&family=Playfair+Display:wght@600&family=Bebas+Neue&family=Pacifico&family=Oswald:wght@500&family=Anton&family=Dancing+Script:wght@600&family=Noto+Sans+Devanagari:wght@400;600&family=Hind:wght@500&family=Baloo+2:wght@600&family=Yatra+One&family=Tiro+Devanagari+Hindi&family=Rozha+One&family=Khand:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --paper:#F0F1EC; --surface:#FFFFFF; --ink:#17181A; --ink-soft:#5B5D5F;
+    --line:#D8D9D3; --accent:#B7332F; --accent-soft:#F3E2E0; --ok:#2F6B4F; --warn:#9C6B1F;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--paper); color:var(--ink); font-family:'Space Grotesk', sans-serif; -webkit-font-smoothing:antialiased; }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+
+  header{ padding:28px 32px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px; }
+  header h1{ font-size:28px; font-weight:600; margin:0 0 4px; letter-spacing:-0.01em; }
+  header p{ margin:0; color:var(--ink-soft); font-size:14px; max-width:520px; }
+  .tag-row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .job-tag{ font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-soft); border:1px solid var(--line); padding:5px 10px; }
+  .sync-tag{ font-family:'IBM Plex Mono', monospace; font-size:12px; padding:5px 10px; border:1px solid var(--line); display:flex; align-items:center; gap:6px; }
+  .sync-dot{ width:7px; height:7px; border-radius:50%; background:var(--ink-soft); }
+  .sync-tag.live .sync-dot{ background:var(--ok); }
+  .sync-tag.live{ color:var(--ok); border-color:#CFE3D8; background:#F1F8F4; }
+
+  .loadbar{ display:flex; gap:10px; flex-wrap:wrap; padding:18px 32px; background:var(--surface); border-bottom:1px solid var(--line); align-items:center; }
+  .loadbar label{ font-size:12px; color:var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
+  input[type=text], select, textarea{ font-family:'Space Grotesk', sans-serif; font-size:13px; padding:8px 10px; border:1px solid var(--line); background:#fff; color:var(--ink); }
+  input[type=text]{ min-width:260px; }
+  textarea{ width:100%; min-height:90px; font-family:'IBM Plex Mono', monospace; font-size:12px; }
+  button{ font-family:'Space Grotesk', sans-serif; font-size:13px; font-weight:600; padding:8px 14px; border:1px solid var(--ink); background:var(--ink); color:#fff; cursor:pointer; }
+  button.ghost{ background:transparent; color:var(--ink); }
+  button.small{ padding:5px 10px; font-size:12px; font-weight:500; }
+  button:hover{ opacity:0.85; }
+  button:disabled{ opacity:0.4; cursor:not-allowed; }
+  .filebtn{ position:relative; overflow:hidden; display:inline-block; }
+  .filebtn input[type=file]{ position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; }
+
+  .settings{ padding:20px 32px; background:var(--surface); border-bottom:1px solid var(--line); font-size:12px; color:var(--ink-soft); display:none; flex-direction:column; gap:20px; }
+  .settings.open{ display:flex; }
+  .settings h3{ font-family:'IBM Plex Mono', monospace; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink); margin:0 0 10px; font-weight:500; }
+  .settings-row{ display:flex; gap:14px 24px; flex-wrap:wrap; align-items:flex-end; }
+  .settings .field{ display:flex; flex-direction:column; gap:4px; }
+  .settings input[type=text]{ min-width:160px; }
+  .settings select{ min-width:160px; }
+  .override-list{ display:flex; flex-direction:column; gap:8px; margin-bottom:8px; }
+  .override-row{ display:flex; gap:8px; align-items:center; }
+  .override-row input[type=text]{ min-width:150px; }
+  .override-row button{ padding:4px 8px; font-size:11px; }
+  .hint{ font-size:11px; color:var(--ink-soft); max-width:520px; line-height:1.5; }
+  .field-full{ width:100%; }
+
+  .toolbar{ padding:16px 32px; display:flex; gap:16px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
+  .toolbar .left{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .count{ font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-soft); }
+  .toggle{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
+
+  main{ padding:0 32px 60px; }
+  .empty{ padding:80px 20px; text-align:center; color:var(--ink-soft); }
+  .empty h2{ font-weight:600; font-size:18px; color:var(--ink); margin-bottom:6px; }
+
+  .grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:18px; }
+
+  .card{ background:var(--surface); border:1px solid var(--line); position:relative; padding:16px; }
+  .card::before, .card::after{ content:""; position:absolute; width:10px; height:10px; border-top:1px solid var(--ink); border-left:1px solid var(--ink); top:-1px; left:-1px; }
+  .card::after{ left:auto; right:-1px; top:auto; bottom:-1px; border:none; border-bottom:1px solid var(--ink); border-right:1px solid var(--ink); }
+  .card.mine{ outline:2px solid var(--accent); outline-offset:-2px; }
+  .card.reviewed{ background:#F8FBF9; }
+
+  .card-meta{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; gap:8px; }
+  .meta-left{ font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--ink-soft); line-height:1.5; }
+  .meta-left .oid{ color:var(--ink); font-weight:500; }
+  .chip-row{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .lang-chip{ font-family:'IBM Plex Mono', monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.04em; padding:3px 8px; border:1px solid var(--line); color:var(--ink-soft); white-space:nowrap; }
+  .lang-chip.hindi{ color:var(--accent); border-color:var(--accent-soft); background:var(--accent-soft); }
+  .lang-chip.override{ color:var(--warn); border-color:#EFE0C4; background:#FBF3E3; }
+
+  .ordered-by{ font-size:11px; color:var(--ink-soft); margin-bottom:2px; font-style:italic; }
+  .original-name{ font-size:11px; color:var(--ink-soft); margin-bottom:8px; }
+
+  .preview-box{ border:1px dashed var(--line); background:#FAFAF8; min-height:110px; display:flex; align-items:center; justify-content:center; padding:10px; margin-bottom:10px; }
+  .preview-text{ width:100%; border:none; background:transparent; text-align:center; font-size:38px; color:var(--ink); outline:none; line-height:1.3; }
+  .preview-text::placeholder{ color:var(--ink-soft); font-size:18px; }
+
+  .controls-row{ display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+  .controls-row select{ flex:1; min-width:120px; }
+
+  .ref-block{ margin-bottom:10px; border:1px solid var(--line); padding:8px; background:#FAFAF8; }
+  .ref-block .label{ font-family:'IBM Plex Mono', monospace; font-size:10px; color:var(--ink-soft); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.04em; }
+  .ref-block img{ max-width:100%; max-height:140px; display:block; border:1px solid var(--line); }
+  .ref-block a{ color:var(--accent); font-size:11px; }
+
+  .card-footer{ display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+  .status{ font-family:'IBM Plex Mono', monospace; font-size:10px; color:var(--ink-soft); }
+  .status.embedded{ color:var(--ok); }
+  .status.warn{ color:var(--warn); }
+  .reviewed-toggle{ display:flex; align-items:center; gap:5px; font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--ink-soft); }
+  .reviewed-toggle.on{ color:var(--ok); }
+
+  ::selection{ background:var(--accent-soft); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Avighna'26 — Print Proof Sheet</h1>
+    <p>Load responses, check every name and font, edit anything that's off, and export the print-ready file — right here.</p>
+  </div>
+  <div class="tag-row">
+    <div class="sync-tag" id="syncTag"><span class="sync-dot"></span><span id="syncLabel">not connected</span></div>
+    <div class="job-tag">MERCH · GANESH FESTIVAL · 2026</div>
+  </div>
+</header>
+
+<div class="loadbar">
+  <label>Load data:</label>
+  <span class="filebtn"><button>Upload CSV</button><input type="file" id="csvFile" accept=".csv"></span>
+  <span class="mono" style="font-size:12px;color:var(--ink-soft);">or</span>
+  <input type="text" id="csvUrl" placeholder="Paste published Google Sheet CSV link…">
+  <button class="ghost" id="loadUrlBtn">Fetch link</button>
+  <button class="ghost" id="settingsBtn" style="margin-left:auto;">Settings</button>
+</div>
+
+<div class="settings" id="settingsPanel">
+  <div>
+    <h3>Collaboration (optional)</h3>
+    <p class="hint">Connect a free Firebase project so everyone who opens this link sees the same live board — edits and "reviewed" checkmarks sync across everyone instantly. See README for the 5-minute setup. Paste the config object Firebase gives you below.</p>
+    <div class="settings-row field-full">
+      <div class="field field-full">
+        <label>Firebase config (paste the whole object from your Firebase console)</label>
+        <textarea id="firebaseConfigInput" placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "...", "storageBucket": "...", "messagingSenderId": "...", "appId": "..." }'></textarea>
+      </div>
+    </div>
+    <div class="settings-row">
+      <button class="small" id="connectFirebase">Connect</button>
+      <span class="hint" id="firebaseStatus"></span>
+    </div>
+  </div>
+
+  <div>
+    <h3>Column mapping</h3>
+    <div class="settings-row">
+      <div class="field"><label>Order ID column</label><input type="text" id="colOrderId" value="OrderID"></div>
+      <div class="field"><label>Timestamp column</label><input type="text" id="colTimestamp" value="Timestamp"></div>
+      <div class="field"><label>Orderer name column</label><input type="text" id="colOrderer" value="Name"></div>
+      <div class="field"><label>Name to print column</label><input type="text" id="colPrintName" value="Name on T-Shirt"></div>
+      <div class="field"><label>Language column</label><input type="text" id="colLanguage" value="Language"></div>
+      <div class="field"><label>Hindi handwriting link column</label><input type="text" id="colRefLink" value="Handwriting Reference"></div>
+    </div>
+  </div>
+
+  <div>
+    <h3>Default fonts</h3>
+    <div class="settings-row">
+      <div class="field"><label>Default English font</label><select id="defaultEnglishFont"></select></div>
+      <div class="field"><label>Upload Impact.ttf (for guaranteed embed)</label><span class="filebtn"><button class="small ghost">Upload file</button><input type="file" id="englishFontFile" accept=".ttf,.otf"></span></div>
+      <div class="field"><label>Default Hindi font</label><select id="defaultHindiFont"></select></div>
+      <div class="field"><label>Upload Hindi font file (optional)</label><span class="filebtn"><button class="small ghost">Upload file</button><input type="file" id="hindiFontFile" accept=".ttf,.otf"></span></div>
+    </div>
+    <p class="hint">"Impact" is a system font, not a downloadable web font, so exported files can only embed it if you upload the exact .ttf (most Windows machines have it at C:\Windows\Fonts\Impact.ttf; on Mac it's in Font Book). "Yatra One" is a real Google Font, so it embeds automatically.</p>
+  </div>
+
+  <div>
+    <h3>Per-person font overrides</h3>
+    <p class="hint">For anyone whose default shouldn't be Impact/Yatra One — e.g. your own entry. Match by exact Order ID or exact printed name (case-insensitive). Applies automatically the first time that entry loads.</p>
+    <div class="override-list" id="overrideList"></div>
+    <button class="small ghost" id="addOverride">+ Add override</button>
+  </div>
+
+  <div class="settings-row">
+    <button class="small" id="applyMapping">Apply & reload</button>
+    <span class="hint" id="saveStatus"></span>
+  </div>
+</div>
+
+<div class="toolbar">
+  <div class="left">
+    <input type="text" id="searchBox" placeholder="Search by name…" style="min-width:200px;">
+    <select id="sortBy">
+      <option value="printName">Sort: name printed on shirt</option>
+      <option value="orderer">Sort: orderer's name</option>
+    </select>
+    <div class="toggle"><input type="checkbox" id="showSkipped"><label for="showSkipped">Show "no name" entries</label></div>
+    <div class="toggle"><input type="checkbox" id="hideReviewed"><label for="hideReviewed">Hide reviewed</label></div>
+  </div>
+  <div class="count" id="countLabel">No data loaded</div>
+</div>
+
+<main>
+  <div class="empty" id="emptyState">
+    <h2>Nothing loaded yet</h2>
+    <p>Upload a CSV exported from your response sheet, or paste a published CSV link above.</p>
+  </div>
+  <div class="grid" id="grid"></div>
+</main>
+
+<script>
+const ENGLISH_FONTS = ['Impact','Poppins','Montserrat','Playfair Display','Bebas Neue','Pacifico','Oswald','Anton','Dancing Script'];
+const HINDI_FONTS = ['Yatra One','Noto Sans Devanagari','Hind','Baloo 2','Tiro Devanagari Hindi','Rozha One','Khand'];
+const ALL_FONTS = [...ENGLISH_FONTS, ...HINDI_FONTS];
+const STORAGE_KEY = 'avighna_proof_sheet_settings_v2';
+
+let entries = [];          // local mirror, keyed by array index; each has .safeId
+let settings = loadSettings();
+let db = null;             // firestore instance, null = not connected
+let unsubscribe = null;    // firestore listener unsubscribe fn
+let writeTimers = {};      // debounce handles per safeId+field
+
+function defaultSettings(){
+  return {
+    columns: { colOrderId:'OrderID', colTimestamp:'Timestamp', colOrderer:'Name', colPrintName:'Name on T-Shirt', colLanguage:'Language', colRefLink:'Handwriting Reference' },
+    defaultEnglishFont: 'Impact',
+    defaultHindiFont: 'Yatra One',
+    englishFontFile: null,
+    hindiFontFile: null,
+    overrides: [],
+    firebaseConfig: null   // raw text as pasted
+  };
+}
+function loadSettings(){
+  try{ const raw = localStorage.getItem(STORAGE_KEY); if(raw) return { ...defaultSettings(), ...JSON.parse(raw) }; }catch(e){}
+  return defaultSettings();
+}
+function saveSettings(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    const el = document.getElementById('saveStatus');
+    el.textContent = 'Settings saved to this browser.';
+    setTimeout(()=> el.textContent='', 2000);
+  }catch(e){ console.warn('Could not save settings', e); }
+}
+
+function escapeHtml(s){
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function safeIdFor(orderId){ return String(orderId).replace(/[^a-zA-Z0-9_-]/g, '_'); }
+
+// ---------------- Settings UI ----------------
+function initSettingsUI(){
+  Object.entries(settings.columns).forEach(([key, val]) => { document.getElementById(key).value = val; });
+  const engSel = document.getElementById('defaultEnglishFont');
+  const hinSel = document.getElementById('defaultHindiFont');
+  engSel.innerHTML = ENGLISH_FONTS.map(f => `<option value="${f}">${f}</option>`).join('');
+  hinSel.innerHTML = HINDI_FONTS.map(f => `<option value="${f}">${f}</option>`).join('');
+  engSel.value = settings.defaultEnglishFont;
+  hinSel.value = settings.defaultHindiFont;
+  renderOverrideList();
+
+  if(settings.firebaseConfig){
+    document.getElementById('firebaseConfigInput').value = settings.firebaseConfig;
+    tryConnectFirebase(settings.firebaseConfig, true);
+  }
+}
+
+function renderOverrideList(){
+  const list = document.getElementById('overrideList');
+  list.innerHTML = settings.overrides.map((o, i) => `
+    <div class="override-row">
+      <input type="text" placeholder="Order ID or exact printed name" value="${escapeHtml(o.match)}" data-i="${i}" class="ov-match">
+      <select data-i="${i}" class="ov-font">${ALL_FONTS.map(f => `<option value="${f}" ${f===o.font?'selected':''}>${f}</option>`).join('')}</select>
+      <button class="small ghost ov-remove" data-i="${i}">Remove</button>
+    </div>`).join('');
+  list.querySelectorAll('.ov-match').forEach(el => el.addEventListener('input', ev => { settings.overrides[+ev.target.dataset.i].match = ev.target.value; }));
+  list.querySelectorAll('.ov-font').forEach(el => el.addEventListener('change', ev => { settings.overrides[+ev.target.dataset.i].font = ev.target.value; }));
+  list.querySelectorAll('.ov-remove').forEach(el => el.addEventListener('click', ev => { settings.overrides.splice(+ev.target.dataset.i, 1); renderOverrideList(); }));
+}
+document.getElementById('addOverride').addEventListener('click', () => { settings.overrides.push({ match:'', font: ENGLISH_FONTS[1] }); renderOverrideList(); });
+
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+document.getElementById('englishFontFile').addEventListener('change', async ev => { const f=ev.target.files[0]; if(!f) return; settings.englishFontFile = { ext: f.name.split('.').pop().toLowerCase(), base64: await fileToBase64(f) }; });
+document.getElementById('hindiFontFile').addEventListener('change', async ev => { const f=ev.target.files[0]; if(!f) return; settings.hindiFontFile = { ext: f.name.split('.').pop().toLowerCase(), base64: await fileToBase64(f) }; });
+
+// ---------------- Firebase (collaboration) ----------------
+function setSyncStatus(connected, label){
+  const tag = document.getElementById('syncTag');
+  tag.classList.toggle('live', connected);
+  document.getElementById('syncLabel').textContent = label;
+}
+
+function tryConnectFirebase(configText, silent){
+  const statusEl = document.getElementById('firebaseStatus');
+  let config;
+  try{
+    config = JSON.parse(configText);
+  }catch(e){
+    try{ config = Function('"use strict"; return (' + configText + ')')(); }
+    catch(e2){ if(!silent) statusEl.textContent = 'Could not parse that config — paste the exact object from Firebase.'; return; }
+  }
+  try{
+    if(firebase.apps.length) firebase.app().delete().catch(()=>{});
+    const app = firebase.initializeApp(config);
+    db = firebase.firestore();
+    settings.firebaseConfig = configText;
+    saveSettings();
+    setSyncStatus(true, 'live · syncing');
+    statusEl.textContent = 'Connected. Everyone with this same config will share this board.';
+    subscribeToEntries();
+  }catch(e){
+    db = null;
+    setSyncStatus(false, 'not connected');
+    if(!silent) statusEl.textContent = 'Connection failed: ' + e.message;
+  }
+}
+document.getElementById('connectFirebase').addEventListener('click', () => {
+  tryConnectFirebase(document.getElementById('firebaseConfigInput').value.trim(), false);
+});
+
+function subscribeToEntries(){
+  if(!db) return;
+  if(unsubscribe) unsubscribe();
+  unsubscribe = db.collection('entries').onSnapshot(snapshot => {
+    const remote = {};
+    snapshot.forEach(doc => { remote[doc.id] = doc.data(); });
+    // merge remote docs into local entries (remote is source of truth for synced fields)
+    entries = entries.map(e => {
+      const r = remote[e.safeId];
+      if(!r) return e;
+      return { ...e, ...r, safeId: e.safeId };
+    });
+    // add any remote-only docs not yet in local (e.g. teammate loaded a row we haven't)
+    Object.keys(remote).forEach(id => {
+      if(!entries.find(e => e.safeId === id)) entries.push({ safeId:id, customFont:null, ...remote[id] });
+    });
+    render();
+  }, err => {
+    console.warn('Firestore snapshot error', err);
+    setSyncStatus(false, 'sync error');
+  });
+}
+
+function debouncedWrite(safeId, field, value, delay){
+  if(!db) return;
+  const key = safeId + ':' + field;
+  clearTimeout(writeTimers[key]);
+  writeTimers[key] = setTimeout(() => {
+    db.collection('entries').doc(safeId).set({ [field]: value }, { merge:true }).catch(err => console.warn('write failed', err));
+  }, delay ?? 400);
+}
+
+// ---------------- Data loading ----------------
+function getCol(row, key){
+  const target = settings.columns[key].trim().toLowerCase();
+  const foundKey = Object.keys(row).find(k => k.trim().toLowerCase() === target);
+  return foundKey ? (row[foundKey] || '').toString().trim() : '';
+}
+function driveDirectLink(url){
+  if(!url) return null;
+  const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if(m) return `https://drive.google.com/uc?export=view&id=${m[1]}`;
+  return url;
+}
+function findOverride(orderId, printName){
+  return settings.overrides.find(o => {
+    if(!o.match) return false;
+    const m = o.match.trim().toLowerCase();
+    return m === String(orderId).trim().toLowerCase() || m === String(printName).trim().toLowerCase();
+  });
+}
+
+async function transliterate(englishName){
+  const url = new URL('https://inputtools.google.com/request');
+  url.searchParams.set('text', englishName);
+  url.searchParams.set('itc', 'hi-t-i0-und');
+  url.searchParams.set('oe', 'UTF-8');
+  url.searchParams.set('app', 'demopage');
+
+  for(let attempt = 1; attempt <= 3; attempt++){
+    try{
+      const response = await fetch(url);
+      if(response.ok){
+        const result = await response.json();
+        const suggestions = result?.[0] === 'SUCCESS' ? result?.[1]?.[0]?.[1] : null;
+        if(suggestions?.length) return suggestions[0];
+      }
+    }catch(e){
+      if(attempt === 3) console.warn('Could not transliterate name:', e);
+    }
+    if(attempt < 3) await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+  }
+  return '';
+}
+
+async function buildEntries(rows){
+  const parsed = await Promise.all(rows.map(async (row, i) => {
+    const language = getCol(row, 'colLanguage').toLowerCase();
+    const isHindi = language.includes('hindi');
+    const isNoName = language.includes('none') || language.includes('no name');
+    const orderId = getCol(row, 'colOrderId') || `ROW${i+1}`;
+    const orderer = getCol(row, 'colOrderer');
+    const originalPrintName = getCol(row, 'colPrintName') || (isNoName ? '' : orderer);
+    const override = findOverride(orderId, originalPrintName);
+    const hindiSuggestion = isHindi && /[A-Za-z]/.test(originalPrintName)
+      ? await transliterate(originalPrintName)
+      : '';
+    return {
+      safeId: safeIdFor(orderId),
+      orderId,
+      timestamp: getCol(row, 'colTimestamp'),
+      orderer,
+      originalPrintName,
+      printName: hindiSuggestion || originalPrintName,
+      language: isNoName ? 'none' : (isHindi ? 'hindi' : 'english'),
+      refLink: getCol(row, 'colRefLink'),
+      fontFamily: override ? override.font : (isHindi ? settings.defaultHindiFont : settings.defaultEnglishFont),
+      isOverridden: !!override,
+      reviewed: false,
+      customFont: null,
+    };
+  }));
+
+  if(db){
+    // seed / refresh Firestore, preserving teammate edits to printName/fontFamily/reviewed
+    for(const e of parsed){
+      const ref = db.collection('entries').doc(e.safeId);
+      const snap = await ref.get();
+      if(snap.exists){
+        await ref.set({
+          orderId:e.orderId, timestamp:e.timestamp, orderer:e.orderer,
+          originalPrintName:e.originalPrintName, language:e.language, refLink:e.refLink
+        }, { merge:true });
+      } else {
+        const { customFont, ...seed } = e;
+        await ref.set(seed);
+      }
+    }
+    // entries[] will populate from the live snapshot listener
+  } else {
+    entries = parsed;
+    render();
+  }
+}
+
+// ---------------- Render ----------------
+let focusMemo = null;
+function captureFocus(){
+  const el = document.activeElement;
+  if(el && el.classList && el.classList.contains('preview-text')){
+    focusMemo = { safeId: el.dataset.safeid, start: el.selectionStart, end: el.selectionEnd };
+  } else { focusMemo = null; }
+}
+function restoreFocus(){
+  if(!focusMemo) return;
+  const el = document.querySelector(`.preview-text[data-safeid="${CSS.escape(focusMemo.safeId)}"]`);
+  if(el){ el.focus(); try{ el.setSelectionRange(focusMemo.start, focusMemo.end); }catch(e){} }
+}
+
+function render(){
+  captureFocus();
+  const grid = document.getElementById('grid');
+  const empty = document.getElementById('emptyState');
+  const showSkipped = document.getElementById('showSkipped').checked;
+  const hideReviewed = document.getElementById('hideReviewed').checked;
+  const search = document.getElementById('searchBox').value.trim().toLowerCase();
+  const sortBy = document.getElementById('sortBy').value;
+
+  let visible = entries.filter(e => (showSkipped || e.language !== 'none'));
+  if(hideReviewed) visible = visible.filter(e => !e.reviewed);
+  if(search) visible = visible.filter(e => (e.printName||'').toLowerCase().includes(search) || (e.orderer||'').toLowerCase().includes(search));
+  visible.sort((a,b) => (a[sortBy] || '').localeCompare(b[sortBy] || '', 'hi'));
+
+  document.getElementById('countLabel').textContent =
+    entries.length ? `${visible.length} shown / ${entries.length} total` : 'No data loaded';
+
+  if(entries.length === 0){ empty.style.display='block'; grid.innerHTML=''; return; }
+  empty.style.display='none';
+
+  grid.innerHTML = visible.map((e) => {
+    const fontList = e.language === 'hindi' ? HINDI_FONTS : ENGLISH_FONTS;
+    const fontOptions = fontList.map(f => `<option value="${f}" ${e.fontFamily===f?'selected':''}>${f}</option>`).join('');
+    const activeFontCss = e.customFont ? `'custom-${e.safeId}'` : `'${e.fontFamily}', sans-serif`;
+    const refImg = driveDirectLink(e.refLink);
+    const showRef = e.language === 'hindi' && e.refLink;
+    const showOriginal = e.printName !== e.originalPrintName;
+
+    return `
+    <div class="card ${e.isOverridden ? 'mine' : ''} ${e.reviewed ? 'reviewed' : ''}" data-safeid="${e.safeId}">
+      <div class="card-meta">
+        <div class="meta-left">
+          <div class="oid">${escapeHtml(e.orderId)}</div>
+          <div>${escapeHtml(e.timestamp || '—')}</div>
+        </div>
+        <div class="chip-row">
+          ${e.isOverridden ? `<div class="lang-chip override">custom default</div>` : ''}
+          <div class="lang-chip ${e.language==='hindi'?'hindi':''}">${e.language}</div>
+        </div>
+      </div>
+      ${e.orderer && e.orderer !== e.originalPrintName ? `<div class="ordered-by">Ordered by ${escapeHtml(e.orderer)}</div>` : ''}
+      ${showOriginal ? `<div class="original-name">As entered: ${escapeHtml(e.originalPrintName)}</div>` : ''}
+
+      <div class="preview-box">
+        <input class="preview-text" style="font-family:${activeFontCss};" data-safeid="${e.safeId}" value="${escapeHtml(e.printName)}" placeholder="${e.language === 'none' ? 'No name' : ''}">
+      </div>
+
+      <div class="controls-row">
+        <select data-safeid="${e.safeId}" class="fontSelect">${fontOptions}</select>
+        <span class="filebtn"><button class="small ghost">Upload font</button><input type="file" accept=".ttf,.otf" class="fontUpload" data-safeid="${e.safeId}"></span>
+      </div>
+
+      ${showRef ? `
+      <div class="ref-block">
+        <div class="label">Handwriting reference</div>
+        <img src="${refImg}" alt="handwriting reference" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+        <a href="${e.refLink}" target="_blank" style="display:none;">Open reference link ↗</a>
+      </div>` : ''}
+
+      <div class="card-footer">
+        <label class="reviewed-toggle ${e.reviewed?'on':''}">
+          <input type="checkbox" class="reviewedBox" data-safeid="${e.safeId}" ${e.reviewed?'checked':''}> reviewed
+        </label>
+        <span class="status" id="status-${e.safeId}">${e.customFont ? 'custom font · embeds on download' : 'preset font'}</span>
+        <button class="small downloadBtn" data-safeid="${e.safeId}">Download SVG</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  attachCardListeners();
+  restoreFocus();
+}
+
+function findEntry(safeId){ return entries.find(e => e.safeId === safeId); }
+
+function attachCardListeners(){
+  document.querySelectorAll('.preview-text').forEach(el => {
+    el.addEventListener('input', ev => {
+      const safeId = ev.target.dataset.safeid;
+      const entry = findEntry(safeId);
+      entry.printName = ev.target.value;
+      debouncedWrite(safeId, 'printName', ev.target.value);
+    });
+  });
+  document.querySelectorAll('.fontSelect').forEach(el => {
+    el.addEventListener('change', ev => {
+      const safeId = ev.target.dataset.safeid;
+      const entry = findEntry(safeId);
+      entry.fontFamily = ev.target.value;
+      entry.customFont = null;
+      entry.isOverridden = true;
+      debouncedWrite(safeId, 'fontFamily', ev.target.value, 0);
+      debouncedWrite(safeId, 'isOverridden', true, 0);
+      render();
+    });
+  });
+  document.querySelectorAll('.fontUpload').forEach(el => {
+    el.addEventListener('change', async ev => {
+      const safeId = ev.target.dataset.safeid;
+      const file = ev.target.files[0];
+      if(!file) return;
+      const base64 = await fileToBase64(file);
+      const entry = findEntry(safeId);
+      entry.customFont = { name: file.name, base64, ext: file.name.split('.').pop().toLowerCase() };
+      injectCustomFontFace(safeId, entry.customFont);
+      render();
+    });
+  });
+  document.querySelectorAll('.reviewedBox').forEach(el => {
+    el.addEventListener('change', ev => {
+      const safeId = ev.target.dataset.safeid;
+      const entry = findEntry(safeId);
+      entry.reviewed = ev.target.checked;
+      debouncedWrite(safeId, 'reviewed', ev.target.checked, 0);
+      render();
+    });
+  });
+  document.querySelectorAll('.downloadBtn').forEach(el => {
+    el.addEventListener('click', ev => downloadEntry(ev.target.dataset.safeid));
+  });
+}
+
+function injectCustomFontFace(safeId, customFont){
+  const styleId = `custom-face-${safeId}`;
+  let styleTag = document.getElementById(styleId);
+  if(!styleTag){ styleTag = document.createElement('style'); styleTag.id = styleId; document.head.appendChild(styleTag); }
+  const fmt = customFont.ext === 'otf' ? 'opentype' : 'truetype';
+  styleTag.textContent = `@font-face{font-family:'custom-${safeId}';src:url(data:font/${customFont.ext};base64,${customFont.base64}) format('${fmt}');}`;
+}
+
+function arrayBufferToBase64(buf){
+  let binary = ''; const bytes = new Uint8Array(buf);
+  for(let i=0;i<bytes.byteLength;i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+async function fetchGoogleFontBase64(family){
+  try{
+    const cssUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@400;600&display=swap`;
+    const cssRes = await fetch(cssUrl);
+    const cssText = await cssRes.text();
+    const match = cssText.match(/url\((https:\/\/fonts\.gstatic\.com[^)]+)\)\s*format\('(woff2|truetype)'\)/);
+    if(!match) return null;
+    const fontRes = await fetch(match[1]);
+    const buf = await fontRes.arrayBuffer();
+    return { base64: arrayBufferToBase64(buf), format: match[2] };
+  }catch(e){ console.warn('Could not embed preset font:', e); return null; }
+}
+
+async function downloadEntry(safeId){
+  const e = findEntry(safeId);
+  const statusEl = document.getElementById(`status-${safeId}`);
+  statusEl.textContent = 'preparing…';
+  statusEl.classList.remove('embedded','warn');
+
+  const width = 1200, height = 400, fontSize = 100;
+  let fontFaceCss = '';
+  let familyForSvg = e.fontFamily;
+
+  if(e.customFont){
+    familyForSvg = `custom-${safeId}`;
+    const fmt = e.customFont.ext === 'otf' ? 'opentype' : 'truetype';
+    fontFaceCss = `@font-face{font-family:'${familyForSvg}';src:url(data:font/${e.customFont.ext};base64,${e.customFont.base64}) format('${fmt}');}`;
+    statusEl.textContent = 'custom font · embedded'; statusEl.classList.add('embedded');
+  } else if(e.fontFamily === 'Impact' && settings.englishFontFile){
+    const fmt = settings.englishFontFile.ext === 'otf' ? 'opentype' : 'truetype';
+    fontFaceCss = `@font-face{font-family:'Impact';src:url(data:font/${settings.englishFontFile.ext};base64,${settings.englishFontFile.base64}) format('${fmt}');}`;
+    statusEl.textContent = 'Impact · embedded from uploaded file'; statusEl.classList.add('embedded');
+  } else if(e.fontFamily === 'Impact'){
+    statusEl.textContent = 'Impact NOT embedded — upload Impact.ttf in Settings'; statusEl.classList.add('warn');
+  } else {
+    const embedded = await fetchGoogleFontBase64(e.fontFamily);
+    if(embedded){
+      fontFaceCss = `@font-face{font-family:'${familyForSvg}';src:url(data:font/${embedded.format};base64,${embedded.base64}) format('${embedded.format}');}`;
+      statusEl.textContent = 'font embedded'; statusEl.classList.add('embedded');
+    } else {
+      statusEl.textContent = 'font NOT embedded — verify with vendor'; statusEl.classList.add('warn');
+    }
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+<style>${fontFaceCss}
+text{ font-family:'${familyForSvg}', sans-serif; font-size:${fontSize}px; fill:#000; }
+</style>
+<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle">${escapeHtml(e.printName)}</text>
+</svg>`;
+
+  const blob = new Blob([svg], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${safeId}_${e.language}.svg`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// --- data loading triggers ---
+document.getElementById('csvFile').addEventListener('change', ev => {
+  const file = ev.target.files[0];
+  if(!file) return;
+  Papa.parse(file, { header:true, skipEmptyLines:true, complete: res => buildEntries(res.data) });
+});
+document.getElementById('loadUrlBtn').addEventListener('click', () => {
+  const url = document.getElementById('csvUrl').value.trim();
+  if(!url) return;
+  Papa.parse(url, {
+    download:true, header:true, skipEmptyLines:true,
+    complete: res => buildEntries(res.data),
+    error: err => alert('Could not fetch that link directly (likely a browser CORS restriction). Try downloading the sheet as CSV and using "Upload CSV" instead.\n\n' + err)
+  });
+});
+document.getElementById('settingsBtn').addEventListener('click', () => document.getElementById('settingsPanel').classList.toggle('open'));
+
+document.getElementById('applyMapping').addEventListener('click', () => {
+  Object.keys(settings.columns).forEach(key => { settings.columns[key] = document.getElementById(key).value.trim(); });
+  settings.defaultEnglishFont = document.getElementById('defaultEnglishFont').value;
+  settings.defaultHindiFont = document.getElementById('defaultHindiFont').value;
+  saveSettings();
+  const url = document.getElementById('csvUrl').value.trim();
+  const fileInput = document.getElementById('csvFile');
+  if(fileInput.files[0]) Papa.parse(fileInput.files[0], { header:true, skipEmptyLines:true, complete: res => buildEntries(res.data) });
+  else if(url) Papa.parse(url, { download:true, header:true, skipEmptyLines:true, complete: res => buildEntries(res.data) });
+});
+
+document.getElementById('searchBox').addEventListener('input', render);
+document.getElementById('showSkipped').addEventListener('change', render);
+document.getElementById('hideReviewed').addEventListener('change', render);
+document.getElementById('sortBy').addEventListener('change', render);
+
+initSettingsUI();
+</script>
+</body>
+</html>

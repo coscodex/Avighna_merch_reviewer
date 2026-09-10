@@ -1,0 +1,14 @@
+{
+  "name": "avighna-merch-name-generator",
+  "version": "1.0.0",
+  "description": "Auto-generates vector name files for Avighna'26 merch printing from Google Sheet responses",
+  "main": "generate.js",
+  "scripts": {
+    "transliterate": "node transliterate.js",
+    "start": "node generate.js"
+  },
+  "dependencies": {
+    "puppeteer": "^22.0.0",
+    "csv-parse": "^5.5.0"
+  }
+}
