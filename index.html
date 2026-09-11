@@ -971,13 +971,20 @@ async function buildEntrySvg(e){
 }
 
 function svgFileName(entry){
-  const name = String(entry.printName || 'name')
+  const slug = value => String(value || 'name')
     .trim()
     .toLowerCase()
     .replace(/\s+/g, '_')
     .replace(/[^\p{L}\p{N}_-]/gu, '');
   const size = String(garmentSize(entry) || 'na').trim().toLowerCase().replace(/\s+/g, '');
-  return `${name || 'name'}_${size || 'na'}.svg`;
+  if(entry.customImage?.dataUrl) return `${slug(entry.printName)}_${size || 'na'}.svg`;
+
+  const parts = [slug(entry.orderer || entry.printName)];
+  const orderer = String(entry.orderer || '').trim().toLowerCase();
+  const printed = String(entry.printName || '').trim().toLowerCase();
+  if(entry.language === 'hindi' && printed && printed !== orderer) parts.push(slug(entry.printName));
+  parts.push(size || 'na');
+  return `${parts.join('_')}.svg`;
 }
 
 function uniqueName(used, fileName){
