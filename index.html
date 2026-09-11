@@ -980,9 +980,7 @@ function svgFileName(entry){
   if(entry.customImage?.dataUrl) return `${slug(entry.printName)}_${size || 'na'}.svg`;
 
   const parts = [slug(entry.orderer || entry.printName)];
-  const orderer = String(entry.orderer || '').trim().toLowerCase();
-  const printed = String(entry.printName || '').trim().toLowerCase();
-  if(entry.language === 'hindi' && printed && printed !== orderer) parts.push(slug(entry.printName));
+  if(entry.language === 'hindi' && String(entry.printName || '').trim()) parts.push(slug(entry.printName));
   parts.push(size || 'na');
   return `${parts.join('_')}.svg`;
 }
